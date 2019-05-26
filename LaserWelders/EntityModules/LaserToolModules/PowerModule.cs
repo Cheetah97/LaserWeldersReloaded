@@ -112,11 +112,12 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
         {
             if (!MyKernel.Toggle.Toggled) return 0.0001f / UsedPowerTypePowerDensity; // 100 W
 
+            int SpeedMultiplier = MyKernel.TermControls.SpeedMultiplier;
             float BeamLengthM = MyKernel.TermControls.LaserBeamLength * MyKernel.Tool.CubeGrid.GridSize;
             float Base = MyKernel.Session.Settings.PowerScaleMultiplier;
             float SpeedBase = MyKernel.Session.Settings.SpeedMultiplierPowerScaleMultiplier;
-            float SpeedMult = MyKernel.TermControls.SpeedMultiplier != 1 ? (float)Math.Pow(SpeedBase, MyKernel.TermControls.SpeedMultiplier) / SpeedBase : 1;
-            return (float)Math.Pow(Base, BeamLengthM * SpeedMult * PowerConsumptionMultiplier) / UsedPowerTypePowerDensity;
+            float SpeedMult = MyKernel.TermControls.SpeedMultiplier != 1 ? (float)(SpeedMultiplier * (Math.Pow(SpeedBase, SpeedMultiplier) / SpeedBase)) : 1;
+            return (float)(Math.Pow(Base, BeamLengthM) * SpeedMult * PowerConsumptionMultiplier / UsedPowerTypePowerDensity);
         }
 
         void ClosableModule.Close()

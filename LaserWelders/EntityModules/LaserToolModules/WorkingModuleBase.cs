@@ -3,8 +3,10 @@ using EemRdx.LaserWelders.Helpers;
 using Sandbox.Definitions;
 using Sandbox.Game.Entities;
 using Sandbox.ModAPI;
+using Sandbox.ModAPI.Interfaces;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using VRage.Game;
@@ -16,7 +18,7 @@ using VRageMath;
 
 namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
 {
-    public abstract class WorkingModuleBase : EntityModuleBase<LaserToolKernel>, InitializableModule, UpdatableModule
+    public abstract class WorkingModuleBase : EntityModuleBase<LaserToolKernel>, InitializableModule, UpdatableModule, ClosableModule
     {
         public WorkingModuleBase(LaserToolKernel MyKernel) : base(MyKernel) { }
 
@@ -26,58 +28,85 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
 
         public MyEntityUpdateEnum UpdateFrequency { get; } = MyEntityUpdateEnum.EACH_FRAME;
         protected int Ticker => MyKernel.Session.Clock.Ticker;
-        public IMyInventory ToolCargo { get; private set; }
+        public IMyInventory ToolCargo => MyKernel.Inventory.ToolCargo;
 
         public bool Inited { get; private set; }
 
-        public const int WorkingFrequency = 10;
+        public const int NominalWorkingFrequency = 10;
 
         IEnumerator<bool> CurrentWorkingProcess = null;
 
         protected ToolTierCharacteristics ToolCharacteristics => MyKernel.Session?.Settings?.ToolTiers?.ContainsKey(MyKernel.Block.BlockDefinition.SubtypeName) == true ? MyKernel.Session.Settings.ToolTiers[MyKernel.Block.BlockDefinition.SubtypeName] : default(ToolTierCharacteristics);
-
+        Stopwatch watch = new Stopwatch();
+        protected int LastWorkingProcessTook { get; private set; } = 0;
+        protected int DueRestartTick { get; private set; } = NominalWorkingFrequency * 5;
         void UpdatableModule.Update()
         {
-            //if (Ticker % 120 == 0)
-            //    WriteToLog("Update", $"Updating working module, MyKernel.Toggle.Toggled is {MyKernel.Toggle.Toggled.ToString()}, CurrentWorkingProcess is {(CurrentWorkingProcess == null ? "null" : CurrentWorkingProcess.ToString())}");
-
             if (MyKernel.Toggle.Toggled && MyKernel.OperabilityProvider?.CanOperate == true)
             {
-                if (CurrentWorkingProcess == null && Ticker % WorkingFrequency == 0)
+                if (CurrentWorkingProcess == null && Ticker >= DueRestartTick)
                 {
-                    MyKernel.ResponderModule.ClearStatusReport();
-                    CurrentWorkingProcess = WorkingProcess();
+                    MyKernel.Session.PerformanceLimiter.AddToStartWorkQueue(MyKernel.Block.EntityId);
+                    if (MyKernel.Session.PerformanceLimiter.CanStartWork(MyKernel.Block.EntityId))
+                    {
+                        MyKernel.ResponderModule.ClearStatusReport();
+                        LastWorkingProcessTook = 0;
+                        CurrentWorkingProcess = WorkingProcess();
+                    }
                 }
             }
-            // Despite load distribution across several ticks, a Laser Tool should finish its cycle to avoid weird behavior
+
+            // Because of load distribution across several ticks, a Laser Tool should finish its cycle
+            // even if it is destroyed in order to avoid weird behavior
             if (CurrentWorkingProcess != null)
             {
-                CurrentWorkingProcess.MoveNext();
-                bool working = CurrentWorkingProcess.Current;
+                watch.Start();
+                bool caught = false;
+                try
+                {
+                    CurrentWorkingProcess.MoveNext();
+                }
+                catch (Exception Scrap)
+                {
+                    caught = true;
+                    LogError("Update", "CurrentWorkingProcess threw an error", Scrap);
+                }
+                watch.Stop();
+                LastWorkingProcessTook++;
+                bool working = CurrentWorkingProcess.Current == true && caught == false;
                 if (!working)
                 {
                     CurrentWorkingProcess.Dispose();
                     CurrentWorkingProcess = null;
+                    MyKernel.Session.PerformanceLimiter.RegisterWorkFinished(MyKernel.Block.EntityId);
+                    if (MyAPIGateway.Session.IsServer && MyKernel.Session.Settings.Debug)
+                        WriteToLog($"Update[{MyKernel.Block.CustomName}]", $"Last cycle took {Math.Round(watch.Elapsed.TotalMilliseconds, 3)}ms and {LastWorkingProcessTook} ticks", EemRdx.SessionModules.LoggingLevelEnum.ProfilingLog);
+                    watch.Reset();
                 }
             }
+            if (Ticker % 10 == 0 && MyKernel.Session.Settings.Debug)
+                MyKernel.Block.RefreshCustomInfo();
         }
 
         IEnumerator<bool> WorkingProcess()
         {
             HashSet<IMyCubeGrid> Grids = null; HashSet<IMyCharacter> Characters = null; HashSet<IMyFloatingObject> Flobjes = null; HashSet<IMyVoxelBase> Voxels = null;
+
             GenerateEntityList(MyKernel.Session.Settings.EnableDrilling, out Grids, out Characters, out Flobjes, out Voxels);
+
             Grids.Remove(MyKernel.Block.CubeGrid);
             if (Grids.Count == 0 && Characters.Count == 0 && Flobjes.Count == 0 && Voxels.Count == 0)
                 yield return false;
-            else
-                yield return true;
+
+            MyKernel.Session.PerformanceLimiter.RegisterWorkStarted(MyKernel.Block.EntityId);
+
             ProcessCharacters(Characters);
             ProcessFlobjes(Flobjes);
             IEnumerator<bool> CurrentGridProcessor = null;
             if (Grids.Count > 0) CurrentGridProcessor = ProcessGrids(Grids);
             IEnumerator<bool> CurrentVoxelProcessor = null;
             if (Voxels.Count > 0) CurrentVoxelProcessor = ProcessVoxels(Voxels);
-            //WriteToLog("Update", "Voxel working process created");
+
             if (CurrentGridProcessor != null)
             {
                 bool working = true;
@@ -85,11 +114,11 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                 {
                     CurrentGridProcessor.MoveNext();
                     working = CurrentGridProcessor.Current;
-                    yield return true;
+                    if (working) yield return true;
                 }
                 CurrentGridProcessor.Dispose();
                 CurrentGridProcessor = null;
-                yield return true;
+               if (CurrentVoxelProcessor != null) yield return true;
             }
 
             if (CurrentVoxelProcessor != null)
@@ -99,14 +128,15 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                 {
                     CurrentVoxelProcessor.MoveNext();
                     working = CurrentVoxelProcessor.Current;
-                    //WriteToLog("Update", $"Updating voxel processor, can work further: {working}");
-                    yield return true;
+                    if (working) yield return true;
                 }
                 CurrentVoxelProcessor.Dispose();
                 CurrentVoxelProcessor = null;
-                //WriteToLog("Update", "Voxel working process disposed");
             }
-            //WriteToLog("Update", "Exiting main working process");
+
+            MyKernel.Session.PerformanceLimiter.RegisterWorkFinished(MyKernel.Block.EntityId);
+            DueRestartTick = Ticker + NominalWorkingFrequency;
+            
             yield return false;
         }
 
@@ -133,8 +163,35 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
 
         void InitializableModule.Init()
         {
-            ToolCargo = MyKernel.Tool.GetInventory(0);
             MyKernel.Tool.Synchronized = true;
+            MyKernel.Block.AppendingCustomInfo += Block_AppendingCustomInfo;
+        }
+
+        private void Block_AppendingCustomInfo(IMyTerminalBlock block, StringBuilder info)
+        {
+            int MaxToolUpdatePerTick = MyKernel.Session.Settings.MaxToolUpdatePerTick;
+            int ToolsPending = MyKernel.Session.PerformanceLimiter.ToolsPendingWork;
+            int ToolsWorking = MyKernel.Session.PerformanceLimiter.ToolsWorking;
+            float ToolCapacity = 100;
+            if (ToolsPending + ToolsWorking > MaxToolUpdatePerTick)
+            {
+                ToolCapacity = (float)Math.Round(MaxToolUpdatePerTick / (float)(ToolsPending + ToolsWorking) * 100, 2);
+            }
+            info.AppendLine($"Tool capacity: {ToolCapacity}%");
+            if (MyKernel.Session.Settings.Debug)
+            {
+                info.AppendLine($"Tools working: {ToolsWorking}");
+                info.AppendLine($"Tools pending: {ToolsPending}");
+            }
+            if (ToolCapacity < 100)
+            {
+                info.AppendLine($"Attention: too many tools are enabled, working capacity has been decreased");
+            }
+        }
+
+        void ClosableModule.Close()
+        {
+            MyKernel.Block.AppendingCustomInfo -= Block_AppendingCustomInfo;
         }
     }
 }

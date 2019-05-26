@@ -23,7 +23,7 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
         public static LaserToolPersistentStruct Fallback { get; } = new LaserToolPersistentStruct
         {
             BeamLength = 4,
-            DistanceBased = false,
+            DistanceBased = true,
             SpeedMultiplier = 1,
             ToolMode = true,
         };

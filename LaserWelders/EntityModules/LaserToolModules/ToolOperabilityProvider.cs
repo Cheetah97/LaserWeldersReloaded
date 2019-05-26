@@ -17,7 +17,7 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
         {
             get
             {
-                return MyKernel.Block.IsFunctional && MyKernel.PowerModule?.SufficientPower == true;
+                return MyKernel.Block.IsFunctional && MyKernel.PowerModule?.SufficientPower == true && MyKernel.CombatAbusePrevention?.ToolBlocked != true;
             }
         }
     }

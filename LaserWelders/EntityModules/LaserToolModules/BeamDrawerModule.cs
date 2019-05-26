@@ -51,7 +51,7 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
         }
         public float MinBeamLengthM => MinBeamLengthBlocks * GridBlockSize;
         public float MaxBeamLengthM => MaxBeamLengthBlocks * GridBlockSize;
-        Vector3D BlockForwardEnd => Tool.WorldMatrix.Forward * GridBlockSize * (BlockDimensions.Z) / 2;
+        Vector3D BlockForwardEnd => Tool.WorldMatrix.Forward * GridBlockSize * (BlockDimensions.Z / 2);
         Vector3 LaserEmitterPosition
         {
             get
@@ -61,7 +61,7 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
             }
         }
         public Vector3D BeamStart => BlockPosition + LaserEmitterPosition;
-        public Vector3D BeamEnd => BeamStart + Tool.WorldMatrix.Forward * MyKernel.TermControls.LaserBeamLength * GridBlockSize;// * ToolComp.PowerModule.SuppliedPowerRatio;
+        public Vector3D BeamEnd => BeamStart + Tool.WorldMatrix.Forward * (MyKernel.TermControls.LaserBeamLength + (BlockDimensions.Z / 2f)) * GridBlockSize;// * ToolComp.PowerModule.SuppliedPowerRatio;
 
         public bool RequiresOperable => true;
 
@@ -82,6 +82,8 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
 
         void UpdatableModule.Update()
         {
+            if (MyKernel.Session.Clock.Ticker % (15 * 60) == 0) SetBeamColors();
+
             if (MyKernel.Toggle.Toggled)
             {
                 if (MyKernel.TermControls.ToolMode == LaserTerminalControlsModule.ToolModeWelder)
@@ -95,7 +97,12 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
             }
         }
 
-        public void Init()
+        void InitializableModule.Init()
+        {
+            SetBeamColors();
+        }
+
+        private void SetBeamColors()
         {
             InternalBeamColor = ToolCharacteristics.InternalBeamColor;
             ExternalWeldBeamColor = ToolCharacteristics.ExternalWeldBeamColor;

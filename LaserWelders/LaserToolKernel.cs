@@ -18,6 +18,7 @@ namespace EemRdx.LaserWelders
         IInventory Inventory { get; }
         IPowerModule PowerModule { get; }
         IResponder Responder { get; }
+        ICombatAbusePreventionModule CombatAbusePrevention { get; }
     }
 
     [MyEntityComponentDescriptor(typeof(MyObjectBuilder_ShipGrinder), false, "LargeShipLaserMultitool", "SmallShipLaserMultitool", "LargeShipLaserMultitoolMK2", "SmallShipLaserMultitoolMK2")]
@@ -37,12 +38,14 @@ namespace EemRdx.LaserWelders
         public IPowerModule PowerModule => GetModule<IPowerModule>();
         public IResponder Responder => GetModule<IResponder>();
         public IResponderModuleInternal ResponderModule => GetModule<IResponderModuleInternal>();
+        public ICombatAbusePreventionModule CombatAbusePrevention => GetModule<ICombatAbusePreventionModule>();
 
         protected override void CreateModules()
         {
             base.CreateModules();
             EntityModules.Add(new PersistenceModule(this));
             EntityModules.Add(new PowerModule(this));
+            EntityModules.Add(new CombatAbusePreventionModule(this));
             EntityModules.Add(new ToolOperabilityProvider(this));
             EntityModules.Add(new ToggleModule(this));
             EntityModules.Add(new LaserTerminalControlsModule(this));

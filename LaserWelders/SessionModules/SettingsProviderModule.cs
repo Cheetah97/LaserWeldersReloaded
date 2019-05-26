@@ -69,7 +69,7 @@ namespace EemRdx.LaserWelders.SessionModules
         private void Utilities_MessageEntered(string messageText, ref bool sendToOthers)
         {
             if (MyAPIGateway.Session.LocalHumanPlayer == null) return;
-            if ((int)MyAPIGateway.Session.LocalHumanPlayer.PromoteLevel < 3) return;
+            if ((int)MyAPIGateway.Session.LocalHumanPlayer.PromoteLevel < 4) return;
             if (!messageText.StartsWith("/laserwelders") && !messageText.StartsWith("/lw")) return;
             sendToOthers = false;
             List<string> subArguments = messageText.Split(' ').ToList();

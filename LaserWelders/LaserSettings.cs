@@ -13,12 +13,15 @@ namespace EemRdx.LaserWelders
     [Serializable]
     [ProtoContract]
     [ProtoInclude(500, typeof(ToolTierCharacteristics))]
+    [ProtoInclude(2700, typeof(SimpleColor))]
+    [XmlInclude(typeof(ToolTierCharacteristics))]
     [XmlInclude(typeof(ToolTierCharacteristics))]
     public class LaserSettings
     {
         [ProtoMember]
         public bool Debug = false;
-        [ProtoMember]
+        [ProtoIgnore]
+        [XmlIgnore]
         public bool AllowAsyncWelding = false;
         [ProtoMember]
         public float PowerMultiplier = 1;
@@ -44,9 +47,11 @@ namespace EemRdx.LaserWelders
         [ProtoMember]
         public float SpeedMultiplierPowerScaleMultiplier = 0.9f;
         [ProtoMember]
-        public int BlockLimitsAssessmentPerTick = 2000;
-        [ProtoMember]
         public bool EnableDrilling = true;
+        [ProtoMember]
+        public int MaxToolUpdatePerTick = 4;
+        [ProtoMember]
+        public bool PreventUseInCombat = true;
 
         public static LaserSettings Default
         {
@@ -73,7 +78,7 @@ namespace EemRdx.LaserWelders
                         ["SmallShipLaserMultitool"] = new ToolTierCharacteristics
                         {
                             ToolSubtypeId = "SmallShipLaserMultitool",
-                            MaxBeamLengthBlocks = 20,
+                            MaxBeamLengthBlocks = 10,
                             DrillingVoxelsPerTick = 4,
                             WeldGrindSpeedMultiplier = 0.5f,
                             WelderGrinderWorkingZoneWidth = 2,
@@ -88,7 +93,7 @@ namespace EemRdx.LaserWelders
                         {
                             ToolSubtypeId = "LargeShipLaserMultitoolMK2",
                             MaxBeamLengthBlocks = 8,
-                            DrillingVoxelsPerTick = 4,
+                            DrillingVoxelsPerTick = 6,
                             WeldGrindSpeedMultiplier = 1,
                             WelderGrinderWorkingZoneWidth = 3,
                             DrillingYield = 1,
@@ -101,8 +106,8 @@ namespace EemRdx.LaserWelders
                         ["SmallShipLaserMultitoolMK2"] = new ToolTierCharacteristics
                         {
                             ToolSubtypeId = "SmallShipLaserMultitoolMK2",
-                            MaxBeamLengthBlocks = 40,
-                            DrillingVoxelsPerTick = 4,
+                            MaxBeamLengthBlocks = 20,
+                            DrillingVoxelsPerTick = 6,
                             WeldGrindSpeedMultiplier = 1,
                             WelderGrinderWorkingZoneWidth = 3,
                             DrillingYield = 1,
@@ -119,7 +124,7 @@ namespace EemRdx.LaserWelders
 
         public bool IsValid()
         {
-            return ToolTiers != null && ToolTiers.Count > 0 && ToolTiers.Values.All(x => x.MaxBeamLengthBlocks > 0 && x.SpeedMultiplierMaxValue > 0 && x.WelderGrinderWorkingZoneWidth > 0);
+            return MaxToolUpdatePerTick > 0 && ToolTiers != null && ToolTiers.Count > 0 && ToolTiers.Values.All(x => x.MaxBeamLengthBlocks >= 4 && x.SpeedMultiplierMaxValue >= 1 && x.WelderGrinderWorkingZoneWidth >= 2 && x.WeldGrindSpeedMultiplier >= 0.33f);
         }
     }
 
@@ -145,10 +150,36 @@ namespace EemRdx.LaserWelders
         [ProtoMember(80)]
         public float DrillingYield;
         [ProtoMember(90)]
-        public Color InternalBeamColor;
+        public SimpleColor InternalBeamColor;
         [ProtoMember(100)]
-        public Color ExternalWeldBeamColor;
+        public SimpleColor ExternalWeldBeamColor;
         [ProtoMember(110)]
-        public Color ExternalGrindBeamColor;
+        public SimpleColor ExternalGrindBeamColor;
+    }
+
+    [Serializable]
+    [ProtoContract]
+    public struct SimpleColor
+    {
+        [ProtoMember(1)]
+        public int R;
+        [ProtoMember(2)]
+        public int G;
+        [ProtoMember(3)]
+        public int B;
+
+        public static implicit operator Color(SimpleColor simpleColor)
+        {
+            return new Color(simpleColor.R, simpleColor.G, simpleColor.B, 255);
+        }
+
+        public static implicit operator SimpleColor(Color color)
+        {
+            SimpleColor simpleColor;
+            simpleColor.R = color.R;
+            simpleColor.G = color.G;
+            simpleColor.B = color.B;
+            return simpleColor;
+        }
     }
 }

@@ -19,6 +19,7 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
     public interface IInventory : IEntityModule
     {
         IReadOnlyList<IMyTerminalBlock> InventoryOwners { get; }
+        IMyInventory ToolCargo { get; }
         Dictionary<MyItemType, float> GetAggregateItems();
         Dictionary<MyItemType, float> GetAggregateItemsFor(IList<IMyTerminalBlock> Blocks, Func<MyItemType, bool> filter = null);
         Dictionary<MyItemType, float> GetAggregateItemsFor(IList<IMyInventory> Inventories, Func<MyItemType, bool> filter = null);
@@ -26,7 +27,7 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
         float TryTransferTo(IMyInventory TargetInventory, MyItemType ItemDef, float TargetAmount, IList<IMyTerminalBlock> SourceBlocks);
     }
 
-    public class InventoryModule : EntityModuleBase<ILaserToolKernel>, InitializableModule, UpdatableModule, IInventory
+    public class InventoryModule : EntityModuleBase<ILaserToolKernel>, InitializableModule, UpdatableModule, ClosableModule, IInventory
     {
         public InventoryModule(ILaserToolKernel MyKernel) : base(MyKernel){}
 
@@ -34,9 +35,10 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
 
         public bool Inited { get; private set; }
         public bool RequiresOperable { get; } = false;
-        public MyEntityUpdateEnum UpdateFrequency { get; } = MyEntityUpdateEnum.EACH_10TH_FRAME;
+        public MyEntityUpdateEnum UpdateFrequency { get; } = MyEntityUpdateEnum.EACH_FRAME;
         private int Ticker => MyKernel.Session.Clock.Ticker;
         public IReadOnlyList<IMyTerminalBlock> InventoryOwners => _InventoryOwners.AsReadOnly();
+        public IMyInventory ToolCargo { get; private set; }
         private List<IMyTerminalBlock> _InventoryOwners = new List<IMyTerminalBlock>();
         private IMyGridTerminalSystem Term;
 
@@ -44,25 +46,40 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
         {
             Inited = true;
             Term = MyAPIGateway.TerminalActionsHelper.GetTerminalSystemForGrid(MyKernel.Tool.CubeGrid);
+            // Maching indexes, oh wow
+            ToolCargo = MyKernel.Tool.GetInventory(0);
+            MyKernel.Block.AppendingCustomInfo += Block_AppendingCustomInfo;
             RefreshInventoryOwners();
+        }
+
+        private void Block_AppendingCustomInfo(IMyTerminalBlock arg1, StringBuilder info)
+        {
+            info.AppendLine($"Support inventories: {InventoryOwners.Count}");
         }
 
         void UpdatableModule.Update()
         {
-            if (Ticker % 120 == 0) RefreshInventoryOwners();
+            if (Ticker % (3 * 60) == 0)
+            {
+                RefreshInventoryOwners();
+            }
         }
 
         void RefreshInventoryOwners()
         {
-            _InventoryOwners.Clear();
             List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
-            Term.GetBlocksOfType(blocks, x => x.HasInventory && IsValidInventory(x));
+            Term.GetBlocksOfType(blocks, IsValidInventory);
+            _InventoryOwners.Clear();
             _InventoryOwners.AddRange(blocks);
         }
 
-        static bool IsValidInventory(IMyTerminalBlock Block)
+        bool IsValidInventory(IMyTerminalBlock Block)
         {
-            return Block is IMyCargoContainer || Block is IMyProductionBlock || Block is IMyShipConnector || Block is IMyCollector || Block is IMyCockpit;
+            if (!Block.HasInventory) return false;
+            bool ValidType = Block is IMyCargoContainer || Block is IMyProductionBlock || Block is IMyShipConnector || Block is IMyCollector || Block is IMyCockpit;
+            if (!ValidType) return false;
+            bool Connected = Block.GetInventory(0)?.IsConnectedTo(ToolCargo) == true;
+            return Connected;
         }
 
         public Dictionary<MyItemType, float> GetAggregateItems()
@@ -180,6 +197,11 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                 }
             }
             return MissingItems;
+        }
+
+        void ClosableModule.Close()
+        {
+            MyKernel.Block.AppendingCustomInfo -= Block_AppendingCustomInfo;
         }
     }
 }

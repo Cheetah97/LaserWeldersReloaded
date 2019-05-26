@@ -20,6 +20,7 @@ using Sandbox.Definitions;
 using VRage.ObjectBuilders;
 using System.Collections.Concurrent;
 using VRage.ModAPI;
+using GamelogicHelpers = EemRdx.Extensions.GamelogicHelpers;
 
 namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
 {
@@ -36,18 +37,20 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
 
         protected override void ProcessCharacters(HashSet<IMyCharacter> Characters)
         {
+            if (Characters.Count == 0) return;
             if (!MyAPIGateway.Session.IsServer) return;
             foreach (IMyCharacter Char in Characters)
             {
                 LineD WorkingRay = new LineD(MyKernel.BeamDrawer.BeamStart, MyKernel.BeamDrawer.BeamEnd);
                 if (Char.WorldAABB.Intersects(ref WorkingRay))
-                    Char.DoDamage(VanillaToolConstants.GrinderSpeed * WorkingFrequency / 2, MyDamageType.Grind, true, null, MyKernel.Block.EntityId);
+                    Char.DoDamage(VanillaToolConstants.GrinderSpeed * NominalWorkingFrequency / 2, MyDamageType.Grind, true, null, MyKernel.Block.EntityId);
             }
             //WriteToLog("ProcessCharacters", $"Attempting to damage {Characters.Count} characters");
         }
 
         protected override void ProcessFlobjes(HashSet<IMyFloatingObject> Flobjes)
         {
+            if (Flobjes.Count == 0) return;
             if (!MyAPIGateway.Session.IsServer) return;
             float CargoFillRatio = (float)((double)ToolCargo.CurrentVolume / (double)ToolCargo.MaxVolume);
             foreach (IMyFloatingObject Flobj in Flobjes)
@@ -63,18 +66,6 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
             List<IMySlimBlock> Blocks = new List<IMySlimBlock>();
             List<LineD> RayGrid = null;
 
-            try
-            {
-                int RayGridSize = ToolCharacteristics.WelderGrinderWorkingZoneWidth;
-                RayGrid = BuildLineGrid(RayGridSize, RayGridSize);
-            }
-            catch (Exception Scrap)
-            {
-                LogError("ProcessGrids", $"Broke at BuildLineGrid", Scrap);
-            }
-
-            if (RayGrid == null) yield return false;
-
             List<IMyCubeGrid> ProjectedGrids = new List<IMyCubeGrid>();
             List<IMyCubeGrid> RealGrids = new List<IMyCubeGrid>();
 
@@ -84,51 +75,33 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                 else ProjectedGrids.Add(Grid);
             }
 
-            //WriteToLog("ProcessGrids", $"Attempting to process {RealGrids.Count} real grids and {ProjectedGrids.Count} projected grids");
-            
-            HashSet<IMySlimBlock> ProjectedBlocks = new HashSet<IMySlimBlock>();
-            HashSet<IMySlimBlock> RealBlocks = new HashSet<IMySlimBlock>();
-
-            if (ProjectedGrids.Count > 0 && MyKernel.TermControls.ToolMode == true)
-            {
-                foreach (IMyCubeGrid Grid in ProjectedGrids)
-                {
-                    if (Grid == null) continue;
-                    if (!SafeZonesHelper.IsActionAllowed(Grid.WorldAABB, MySafeZoneAction.Building, MyKernel.Block.EntityId)) continue;
-                    try
-                    {
-                        Grid.GetBlocksOnRay(RayGrid, ProjectedBlocks, block => IsBlockPlaceable(block));
-                    }
-                    catch (Exception Scrap)
-                    {
-                        LogError("ProcessGrids", $"Error while processing projected grid {Grid?.DisplayName}", Scrap);
-                    }
-                }
-                yield return true;
-            }
+            bool AnyGridFiring = false;
 
             foreach (IMyCubeGrid Grid in RealGrids)
             {
-                try
+                if (IsGridFiring(Grid) == true)
                 {
-                    if (MyKernel.TermControls.ToolMode == true)
-                    {
-                        if (!SafeZonesHelper.IsActionAllowed(Grid.WorldAABB, MySafeZoneAction.Welding, MyKernel.Block.EntityId)) continue;
-                        Grid.GetBlocksOnRay(RayGrid, RealBlocks, block => IsBlockWeldable(block));
-                    }
-                    else
-                    {
-                        if (!SafeZonesHelper.IsActionAllowed(Grid.WorldAABB, MySafeZoneAction.Grinding, MyKernel.Block.EntityId)) continue;
-                        Grid.GetBlocksOnRay(RayGrid, RealBlocks, block => IsBlockGrindable(block));
-                    }
-                }
-                catch (Exception Scrap)
-                {
-                    LogError("ProcessGrids", $"Error while processing real grid {Grid?.DisplayName}", Scrap);
+                    AnyGridFiring = true;
+                    break;
                 }
             }
 
-            //WriteToLog("ProcessGrids", $"Attempting to process {RealBlocks.Count} real block intersections and {ProjectedBlocks.Count} projected block intersections");
+            if (AnyGridFiring) yield return false;
+
+            int RayGridSize = ToolCharacteristics.WelderGrinderWorkingZoneWidth;
+            if (!MyKernel.TermControls.DistanceMode)
+                RayGrid = BuildLineGrid(RayGridSize, RayGridSize);
+            else
+                RayGrid = BuildLineGrid(0, 0);
+
+            if (RayGrid == null || RayGrid.Count == 0) yield return false;
+
+            //WriteToLog("ProcessGrids", $"Attempting to process {RealGrids.Count} real grids and {ProjectedGrids.Count} projected grids");
+
+            HashSet<IMySlimBlock> ProjectedBlocks = new HashSet<IMySlimBlock>();
+            HashSet<IMySlimBlock> RealBlocks = new HashSet<IMySlimBlock>();
+
+            AcquireBlocks(RayGrid, ProjectedGrids, RealGrids, ProjectedBlocks, RealBlocks);
 
             IEnumerator<bool> CurrentBlockWorkingProcess = null;
             //WriteToLog("ProcessGrids", $"MyKernel.TermControls.ToolMode is {MyKernel.TermControls.ToolMode.ToString()}");
@@ -179,8 +152,56 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                 CurrentBlockWorkingProcess = null;
                 //WriteToLog("ProcessGrids", $"Block worker disposed");
             }
-            
+
             yield return false;
+        }
+
+        private void AcquireBlocks(List<LineD> RayGrid, List<IMyCubeGrid> ProjectedGrids, List<IMyCubeGrid> RealGrids, HashSet<IMySlimBlock> ProjectedBlocks, HashSet<IMySlimBlock> RealBlocks)
+        {
+            if (ProjectedGrids.Count > 0 && MyKernel.TermControls.ToolMode == true)
+            {
+                foreach (IMyCubeGrid Grid in ProjectedGrids)
+                {
+                    if (Grid == null) continue;
+                    if (!SafeZonesHelper.IsActionAllowed(Grid.WorldAABB, MySafeZoneAction.Building, MyKernel.Block.EntityId)) continue;
+                    Grid.GetBlocksOnRay(RayGrid, ProjectedBlocks, IsBlockPlaceable);
+                }
+                //yield return true;
+            }
+
+            foreach (IMyCubeGrid Grid in RealGrids)
+            {
+                try
+                {
+                    if (MyKernel.TermControls.ToolMode == true)
+                    {
+                        if (!SafeZonesHelper.IsActionAllowed(Grid.WorldAABB, MySafeZoneAction.Welding, MyKernel.Block.EntityId)) continue;
+                        Grid.GetBlocksOnRay(RayGrid, RealBlocks, IsBlockWeldable);
+                    }
+                    else
+                    {
+                        Stopwatch watch = Stopwatch.StartNew();
+                        if (!SafeZonesHelper.IsActionAllowed(Grid.WorldAABB, MySafeZoneAction.Grinding, MyKernel.Block.EntityId)) continue;
+                        //watch.Stop();
+                        //WriteToLog("ProcessGrids", $"Safe zone check took {Math.Round(watch.Elapsed.TotalMilliseconds, 3)}ms", EemRdx.SessionModules.LoggingLevelEnum.ProfilingLog);
+                        //watch.Restart();
+                        Grid.GetBlocksOnRay(RayGrid, RealBlocks, IsBlockGrindable);
+                        //watch.Stop();
+                        //WriteToLog("ProcessGrids", $"Getting blocks took {Math.Round(watch.Elapsed.TotalMilliseconds, 3)}ms", EemRdx.SessionModules.LoggingLevelEnum.ProfilingLog);
+                    }
+                }
+                catch (Exception Scrap)
+                {
+                    LogError("ProcessGrids", $"Error while processing real grid {Grid?.DisplayName}", Scrap);
+                }
+            }
+        }
+
+        private static bool? IsGridFiring(IMyCubeGrid Grid)
+        {
+            GridModules.IWeaponsFireDetectionModule GridWFDModule = GamelogicHelpers.GetComponent<GridKernel>(Grid)?.WeaponsFireDetection; ;
+            bool? firing = GridWFDModule?.WeaponsFiring;
+            return firing;
         }
 
         static Dictionary<long, List<Vector3I>> BlockedVoxels = new Dictionary<long, List<Vector3I>>();
@@ -401,8 +422,8 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                 //MyKernel.SessionBase.Log.DebugLog.WriteToLog($"WeldAndPlaceBlocks", $"Selected block for distance mode");
             }
 
-            float SpeedRatio = (VanillaToolConstants.WelderSpeed / RealBlocks.Count) * WorkingFrequency * MyKernel.TermControls.SpeedMultiplier * WeldGrindSpeedMultiplier;
-            float BoneFixSpeed = VanillaToolConstants.WelderBoneRepairSpeed * WorkingFrequency;
+            float SpeedRatio = (VanillaToolConstants.WelderSpeed / RealBlocks.Count) * NominalWorkingFrequency * MyKernel.TermControls.SpeedMultiplier * WeldGrindSpeedMultiplier;
+            float BoneFixSpeed = VanillaToolConstants.WelderBoneRepairSpeed * NominalWorkingFrequency;
             IMyProjector Projector = null;
             if (ProjectedBlocks.Count > 0)
                 Projector = ((ProjectedBlocks.First().CubeGrid as MyCubeGrid).Projector as IMyProjector);
@@ -413,10 +434,18 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
             {
                 Dictionary<string, int> RequiredComponentNames = new Dictionary<string, int>();
 
-                foreach (IMySlimBlock Block in RealBlocks)
                 {
-                    //Block.ReadMissingComponentsSmart(RequiredComponentNames);
-                    Block.GetMissingComponents(RequiredComponentNames);
+                    Action worker = () =>
+                    {
+                        foreach (IMySlimBlock Block in RealBlocks)
+                        {
+                            Block.GetMissingComponents(RequiredComponentNames);
+                        }
+                    };
+                    bool completed = false;
+                    Action callback = () => completed = true;
+                    MyAPIGateway.Parallel.StartBackground(worker, callback);
+                    while (!completed) yield return true;
                 }
 
                 //MyKernel.SessionBase.Log.DebugLog.WriteToLog($"WeldAndPlaceBlocks", $"Got missing components");
@@ -503,6 +532,8 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                 int placedBlocks = 0;
                 List<IMySlimBlock> NonplacedBlocksByLimit = new List<IMySlimBlock>();
                 List<IMySlimBlock> NonplacedBlocksByResources = new List<IMySlimBlock>();
+                List<IMySlimBlock> PlaceableProjectedBlocks = new List<IMySlimBlock>();
+
                 foreach (IMySlimBlock Block in ProjectedBlocks)
                 {
                     if (MyKernel.Session.BlockLimits.CheckBlockLimits(Block, MyKernel.Block.OwnerId))
@@ -510,10 +541,7 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                         var FirstItem = ((MyCubeBlockDefinition)Block.BlockDefinition).Components[0].Definition.Id;
                         if (ToolCargo.GetItemAmount(FirstItem) >= 1)
                         {
-                            Projector.Build(Block, MyKernel.Tool.OwnerId, MyKernel.Tool.EntityId, false);
-                            ToolCargo.RemoveItemsOfType(1, FirstItem);
-                            placedBlocks++;
-                            if (placedBlocks != ProjectedBlocks.Count - 1) yield return true;
+                            PlaceableProjectedBlocks.Add(Block);
                         }
                         else
                         {
@@ -524,6 +552,15 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                     {
                         NonplacedBlocksByLimit.Add(Block);
                     }
+                }
+
+                foreach (IMySlimBlock Block in PlaceableProjectedBlocks)
+                {
+                    var FirstItem = ((MyCubeBlockDefinition)Block.BlockDefinition).Components[0].Definition.Id;
+                    Projector.Build(Block, MyKernel.Tool.OwnerId, MyKernel.Tool.EntityId, false);
+                    ToolCargo.RemoveItemsOfType(1, FirstItem);
+                    placedBlocks++;
+                    if (placedBlocks != ProjectedBlocks.Count - 1) yield return true;
                 }
 
                 if (UnweldedBlocks.Count > 0)
@@ -601,7 +638,7 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
             if (Blocks.Count == 0) yield return false;
             if (MyKernel.TermControls.ToolMode == true) yield return false;
             
-            float SpeedRatio = VanillaToolConstants.GrinderSpeed / (MyKernel.TermControls.DistanceMode ? 1 : Blocks.Count) * WorkingFrequency * MyKernel.TermControls.SpeedMultiplier * WeldGrindSpeedMultiplier;
+            float SpeedRatio = VanillaToolConstants.GrinderSpeed / (MyKernel.TermControls.DistanceMode ? 1 : Blocks.Count) * NominalWorkingFrequency * MyKernel.TermControls.SpeedMultiplier * WeldGrindSpeedMultiplier;
             if (MyKernel.TermControls.DistanceMode)
             {
                 IMySlimBlock ClosestBlock = Blocks.OrderBy(x => Vector3D.DistanceSquared(x.CubeGrid.GridIntegerToWorld(x.Position), MyKernel.Block.GetPosition())).First();
@@ -609,25 +646,47 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                 Blocks.Add(ClosestBlock);
             }
 
-            int grindedBlocks = 0;
             foreach (IMySlimBlock Block in Blocks)
+                Block.DoDamage(0, MyStringHash.GetOrCompute("Grind"), true, null, MyKernel.Block.EntityId);
+
+            int grindedBlocks = 0;
+            if (MyKernel.Session.Settings.AllowAsyncWelding)
             {
-                grindedBlocks++;
-                //WriteToLog($"GrindBlocks", $"Block pre-grind", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
-                if (MyKernel.Session.Settings.AllowAsyncWelding)
+                Action worker = () =>
                 {
-                    if (CanGrindInAsyncMode(Block))
-                        MyAPIGateway.Parallel.StartBackground(() => Grind(Block, SpeedRatio));
-                    else
-                        Grind(Block, SpeedRatio);
-                }
-                else
-                {
-                    Grind(Block, SpeedRatio);
-                }
-                //WriteToLog($"GrindBlocks", $"Block post-grind", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
-                if (!MyKernel.Session.Settings.AllowAsyncWelding && (grindedBlocks+1) < Blocks.Count) yield return true;
+                    foreach (IMySlimBlock Block in Blocks)
+                    {
+                        grindedBlocks++;
+                        MyAPIGateway.Parallel.StartBackground(() => Grind(Block, SpeedRatio, Raze: false));
+                    }
+                };
+                bool completed = false;
+                Action callback = () => completed = true;
+                MyAPIGateway.Parallel.StartBackground(worker, callback);
+                while (!completed) yield return true;
+
+                List<IMySlimBlock> blocksToRaze = Blocks.Where(x => x.IsFullyDismounted).ToList();
+                foreach (IMySlimBlock Block in blocksToRaze)
+                    Block.CubeGrid.RazeBlock(Block.Position);
             }
+            else
+            {
+                Stopwatch watch = new Stopwatch();
+                foreach (IMySlimBlock Block in Blocks)
+                {
+                    grindedBlocks++;
+                    //WriteToLog($"GrindBlocks", $"Block pre-grind", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
+                    watch.Start();
+                    Grind(Block, SpeedRatio);
+                    //WriteToLog($"GrindBlocks", $"Block post-grind", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
+                    watch.Stop();
+                    if ((grindedBlocks + 1) < Blocks.Count) yield return true;
+                }
+                watch.Stop();
+                if (MyAPIGateway.Session.IsServer && MyKernel.Session.Settings.Debug)
+                    WriteToLog($"GrindBlocks[{MyKernel.Block.CustomName}]", $"Grinding in total took {Math.Round(watch.Elapsed.TotalMilliseconds, 3)}ms", EemRdx.SessionModules.LoggingLevelEnum.ProfilingLog);
+            }
+            
             //WriteToLog($"GrindBlocks", $"Exiting GrindBlocks", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
             yield return false;
         }
@@ -646,56 +705,57 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
             }
         }
         
-        void Grind(IMySlimBlock Block, float SpeedRatio)
+        void Grind(IMySlimBlock Block, float SpeedRatio, bool Raze = true)
         {
             if (Block == null) return;
             try
             {
-                string BlockId = Block.BlockDefinition.Id.ToString().Replace("MyObjectBuilder_", "");
-                //WriteToLog($"Grind", $"Starting to grind '{BlockId}'", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
+                Stopwatch watch = Stopwatch.StartNew();
                 Block.DecreaseMountLevel(SpeedRatio, ToolCargo);
-                //WriteToLog($"Grind", $"Mount level decreased", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
+                watch.Stop();
+                //WriteToLog($"GrindBlocks[{MyKernel.Block.CustomName}]", $"Decreasing mount level took {Math.Round(watch.Elapsed.TotalMilliseconds, 3)}ms", EemRdx.SessionModules.LoggingLevelEnum.ProfilingLog);
+                watch.Restart();
                 Block.MoveItemsFromConstructionStockpile(ToolCargo);
-                //WriteToLog($"Grind", $"Moved items from stockpile to grinder", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
+                watch.Stop();
+                //WriteToLog($"GrindBlocks[{MyKernel.Block.CustomName}]", $"Moving items took {Math.Round(watch.Elapsed.TotalMilliseconds, 3)}ms", EemRdx.SessionModules.LoggingLevelEnum.ProfilingLog);
+                watch.Restart();
                 // This is necessary for compatibility with EEM and other mods which react to damage to their grids
                 Block.DoDamage(0, MyStringHash.GetOrCompute("Grind"), true, null, MyKernel.Block.EntityId);
-                //WriteToLog($"Grind", $"Done 0 damage to block to alert mods of grinding", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
+                watch.Stop();
+                //WriteToLog($"GrindBlocks[{MyKernel.Block.CustomName}]", $"Doing damage took {Math.Round(watch.Elapsed.TotalMilliseconds, 3)}ms", EemRdx.SessionModules.LoggingLevelEnum.ProfilingLog);
+                watch.Restart();
+
                 if (Block.FatBlock?.IsFunctional == false && Block.FatBlock?.HasInventory == true)
                 {
-                    //WriteToLog($"Grind", $"Block '{BlockId}' has an inventory, trying to pull out", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
                     foreach (IMyInventory Inventory in Block.FatBlock.GetInventories())
                     {
-                        if (Inventory.CurrentVolume == VRage.MyFixedPoint.Zero)
-                        {
-                            //WriteToLog($"Grind", $"Volume is zero, skipping", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
-                            continue;
-                        }
+                        if (Inventory.CurrentVolume == VRage.MyFixedPoint.Zero) continue;
                         List<MyInventoryItem> Items = new List<MyInventoryItem>();
                         Inventory.GetItems(Items);
-                        //WriteToLog($"Grind", $"There are {Items.Count} stacks of items", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
+
                         foreach (MyInventoryItem Item in Items)
                         {
-                            //WriteToLog($"Grind", $"Pulling out {Math.Round((float)Item.Amount, 2)} of {Item.Type.SubtypeId}, trying to calculate the amount that'll fit in the tool's cargo", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
                             VRage.MyFixedPoint Amount = (VRage.MyFixedPoint)Math.Min((float)(Inventory as Sandbox.Game.MyInventory).ComputeAmountThatFits(Item.Type), (float)Item.Amount);
-                            //WriteToLog($"Grind", $"Calculated amount that can be fit in the tool's cargo: {Math.Round((float)Amount, 2)}", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
                             if ((float)Amount > 0)
                                 ToolCargo.TransferItemFrom(Inventory, (int)Item.ItemId, null, null, Amount, false);
-                            //WriteToLog($"Grind", $"Pulled out the amount", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
                         }
                     }
-                    //WriteToLog($"Grind", $"Inventories cleaned", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
+                    watch.Stop();
+                    //WriteToLog($"GrindBlocks[{MyKernel.Block.CustomName}]", $"Block has an inventory; cleaning took {Math.Round(watch.Elapsed.TotalMilliseconds, 3)}ms", EemRdx.SessionModules.LoggingLevelEnum.ProfilingLog);
+                    watch.Reset();
                 }
-                if (Block.IsFullyDismounted)
+                
+                if (Raze && Block.IsFullyDismounted)
                 {
-                    //WriteToLog($"Grind", $"Block is fully dismounted, razing it from the grid", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
+                    watch.Restart();
                     Block.CubeGrid.RazeBlock(Block.Position);
+                    watch.Stop();
+                    //WriteToLog($"GrindBlocks[{MyKernel.Block.CustomName}]", $"Razing the block took {Math.Round(watch.Elapsed.TotalMilliseconds, 3)}ms", EemRdx.SessionModules.LoggingLevelEnum.ProfilingLog);
                 }
-
-                //WriteToLog($"Grind", $"Exiting Grind()", EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
             }
             catch (Exception Scrap)
             {
-                LogError(nameof(Grind), $"Grinding of the block {Extensions.GeneralExtensions.GetTypeName(Block)} failed", Scrap);
+                LogError($"GrindBlocks[{MyKernel.Block.CustomName}]", $"Grinding of the block {Extensions.GeneralExtensions.GetTypeName(Block)} failed", Scrap);
             }
         }
 
@@ -714,15 +774,17 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
         {
             Vector3D CenterStart = MyKernel.BeamDrawer.BeamStart;
             Vector3D CenterEnd = MyKernel.BeamDrawer.BeamEnd;
-            Vector3D UpOffset = Vector3D.Normalize(MyKernel.Block.WorldMatrix.Up) * 0.5;
-            Vector3D RightOffset = Vector3D.Normalize(MyKernel.Tool.WorldMatrix.Right) * 0.5;
+
             List<LineD> Grid;
-            if (MyKernel.TermControls.DistanceMode)
+            if (HalfHeight <= 0 && HalfWidth <= 0)
             {
                 Grid = new List<LineD>(1);
                 Grid.Add(new LineD(CenterStart, CenterEnd));
                 return Grid;
             }
+
+            Vector3D UpOffset = Vector3D.Normalize(MyKernel.Block.WorldMatrix.Up) * 0.5;
+            Vector3D RightOffset = Vector3D.Normalize(MyKernel.Tool.WorldMatrix.Right) * 0.5;
 
             Grid = new List<LineD>(((HalfHeight * 2) + 1) * ((HalfWidth * 2) + 1));
 

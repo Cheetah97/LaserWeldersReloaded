@@ -1,13 +1,15 @@
 ﻿using System.Collections.Generic;
 using EemRdx.EntityModules;
+using VRage.Game;
+using VRage.Game.Components;
 using VRage.Game.ModAPI;
 using VRage.ModAPI;
 
-namespace EemRdx.LaserWelders
+namespace EemRdx.LaserWelders.EntityModules.GridModules
 {
-    public class BlockLimitsHelper : EntityModuleBase<IGridBlockLimitKernel>, InitializableModule, UpdatableModule, ClosableModule
+    public class BlockLimitsHelper : EntityModuleBase<IGridKernel>, InitializableModule, UpdatableModule, ClosableModule
     {
-        public BlockLimitsHelper(IGridBlockLimitKernel MyKernel) : base(MyKernel) { }
+        public BlockLimitsHelper(IGridKernel MyKernel) : base(MyKernel) { }
 
         public override string DebugModuleName { get; } = nameof(BlockLimitsHelper);
 
@@ -63,27 +65,5 @@ namespace EemRdx.LaserWelders
             MyKernel.Grid.OnBlockAdded -= Grid_OnBlockAdded;
             MyKernel.Grid.OnBlockRemoved -= Grid_OnBlockRemoved;
         }
-    }
-
-    public interface IGridBlockLimitKernel : IEntityKernel
-    {
-        ILaserWeldersSessionKernel Session { get; }
-        IMyCubeGrid Grid { get; }
-    }
-
-    public class GridBlockLimitKernel : EntityKernel, IGridBlockLimitKernel
-    {
-        public override string DebugKernelName { get; } = nameof(GridBlockLimitKernel);
-
-        public ILaserWeldersSessionKernel Session => LaserWeldersSessionKernel.LaserWeldersSession;
-        public IMyCubeGrid Grid => Entity as IMyCubeGrid;
-
-        protected override void CreateModules()
-        {
-            base.CreateModules();
-            EntityModules.Add(new BlockLimitsHelper(this));
-        }
-
-        public GridBlockLimitKernel() { }
     }
 }

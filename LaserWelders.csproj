@@ -65,7 +65,10 @@
       <HintPath>D:\Programs\Steam\steamapps\common\SpaceEngineers\Bin64\VRage.Math.dll</HintPath>
     </Reference>
     <Reference Include="VRage.Render">
-      <HintPath>..\..\..\..\..\..\Steam\steamapps\common\SpaceEngineers\Bin64\VRage.Render.dll</HintPath>
+      <HintPath>..\..\..\..\Programs\Steam\steamapps\common\SpaceEngineers\Bin64\VRage.Render.dll</HintPath>
+    </Reference>
+    <Reference Include="VRage.Render11">
+      <HintPath>..\..\..\..\Programs\Steam\steamapps\common\SpaceEngineers\Bin64\VRage.Render11.dll</HintPath>
     </Reference>
     <Reference Include="VRage.Scripting">
       <HintPath>D:\Programs\Steam\steamapps\common\SpaceEngineers\Bin64\VRage.Scripting.dll</HintPath>
@@ -113,13 +116,16 @@
     <Compile Include="EEMKernel\Utilities\Profiler.cs" />
     <Compile Include="EEMKernel\Utilities\Queue.cs" />
     <Compile Include="GlobalSuppressions.cs" />
-    <Compile Include="LaserWelders\GridBlockLimitKernel.cs" />
+    <Compile Include="LaserWelders\EntityModules\GridModules\BlockLimitHelperModule.cs" />
+    <Compile Include="LaserWelders\EntityModules\GridModules\WeaponsFireDetectionModule.cs" />
+    <Compile Include="LaserWelders\EntityModules\LaserToolModules\CombatAbusePreventionModule.cs" />
+    <Compile Include="LaserWelders\Helpers\PlayerCollectionHelpers.cs" />
+    <Compile Include="LaserWelders\GridKernel.cs" />
     <Compile Include="LaserWelders\CockpitKernel.cs" />
     <Compile Include="LaserWelders\EntityModules\LaserToolModules\BeamDrawerModule.cs" />
     <Compile Include="LaserWelders\EntityModules\LaserToolModules\EmissivesModule.cs" />
     <Compile Include="LaserWelders\EntityModules\LaserToolModules\InventoryModule.cs" />
     <Compile Include="LaserWelders\EntityModules\LaserToolModules\LaserTerminalControls.cs" />
-    <Compile Include="LaserWelders\EntityModules\LaserToolModules\PerformanceLimiterModule.cs" />
     <Compile Include="LaserWelders\EntityModules\LaserToolModules\PersistenceModule.cs" />
     <Compile Include="LaserWelders\EntityModules\LaserToolModules\PowerModule.cs" />
     <Compile Include="LaserWelders\EntityModules\LaserToolModules\ResponderModule.cs" />
@@ -144,6 +150,7 @@
     <Compile Include="LaserWelders\SessionModules\ClockGenerator.cs" />
     <Compile Include="LaserWelders\SessionModules\GasPowerDensityProviderModule.cs" />
     <Compile Include="LaserWelders\SessionModules\HUDAPIProviderModule.cs" />
+    <Compile Include="LaserWelders\SessionModules\PerformanceLimiterModule.cs" />
     <Compile Include="LaserWelders\SessionModules\SCTermControlsGeneratorModule.cs" />
     <Compile Include="LaserWelders\SessionModules\SettingsProviderModule.cs" />
     <Compile Include="LaserWelders\SessionModules\LaserToolTermControlsGeneratorModule.cs" />

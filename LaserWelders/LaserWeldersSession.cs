@@ -21,6 +21,7 @@ namespace EemRdx.LaserWelders
         IClockGenerator Clock { get; }
         IHUDAPIProvider HUDAPIProvider { get; }
         IGasPowerDensityProvider GasPowerDensityProvider { get; }
+        IPerformanceLimiterModule PerformanceLimiter { get; }
     }
 
     [MySessionComponentDescriptor(MyUpdateOrder.BeforeSimulation)]
@@ -37,6 +38,7 @@ namespace EemRdx.LaserWelders
         public IClockGenerator Clock => GetModule<IClockGenerator>();
         public IHUDAPIProvider HUDAPIProvider => GetModule<IHUDAPIProvider>();
         public IGasPowerDensityProvider GasPowerDensityProvider => GetModule<IGasPowerDensityProvider>();
+        public IPerformanceLimiterModule PerformanceLimiter => GetModule<IPerformanceLimiterModule>();
         public static LaserWeldersSessionKernel LaserWeldersSession { get; private set; }
 
         protected override void CreateModules()
@@ -47,6 +49,7 @@ namespace EemRdx.LaserWelders
             Modules.Add(new LaserToolTermControlsGeneratorModule(this));
             Modules.Add(new SCTermControlsGeneratorModule(this));
             Modules.Add(new BlockLimitsProviderModule(this));
+            Modules.Add(new PerformanceLimiterModule(this));
             Modules.Add(new HUDAPIProviderModule(this));
             Modules.Add(new GasPowerDensityProviderModule(this));
         }

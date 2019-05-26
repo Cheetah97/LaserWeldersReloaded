@@ -8,6 +8,7 @@ using EemRdx.SessionModules;
 using Sandbox.ModAPI;
 using Sandbox.ModAPI.Interfaces.Terminal;
 using VRage.Utils;
+using VRageMath;
 using MyItemType = VRage.Game.ModAPI.Ingame.MyItemType;
 
 namespace EemRdx.LaserWelders.SessionModules
@@ -121,7 +122,7 @@ namespace EemRdx.LaserWelders.SessionModules
 
         void LaserBeamLength_Setter(IMyTerminalBlock Block, float NewLength)
         {
-            BlockAction(Block, x => x.TermControls.LaserBeamLength = (int)NewLength);
+            BlockAction(Block, x => x.TermControls.LaserBeamLength = (int)MathHelper.Clamp(NewLength, LaserBeamLength_MinGetter(Block), LaserBeamLength_MaxGetter(Block)));
         }
 
         void LaserBeamLength_Writer(IMyTerminalBlock Block, StringBuilder Info)
@@ -135,11 +136,11 @@ namespace EemRdx.LaserWelders.SessionModules
             SpeedMultiplier.Title = MyStringId.GetOrCompute("Speed Multiplier");
             SpeedMultiplier.Tooltip = MyStringId.GetOrCompute("Allows to increase tool's speed at the cost of power usage.\nThis is more efficient than piling on multiple tools.\nDoes not accelerate drilling for performance reasons.");
             SpeedMultiplier.SupportsMultipleBlocks = true;
-            SpeedMultiplier.Enabled = HasBlockLogic;
+            SpeedMultiplier.Enabled = (Block) => HasBlockLogic(Block) && SpeedMultiplier_MaxGetter(Block) > 1;
             SpeedMultiplier.Visible = HasBlockLogic;
             SpeedMultiplier.SetLimits(trash => 1, SpeedMultiplier_MaxGetter);
             SpeedMultiplier.Getter = (Block) => BlockReturn(Block, x => x.TermControls.SpeedMultiplier);
-            SpeedMultiplier.Setter = (Block, NewSpeed) => BlockAction(Block, x => x.TermControls.SpeedMultiplier = (int)NewSpeed);
+            SpeedMultiplier.Setter = (Block, NewSpeed) => BlockAction(Block, x => x.TermControls.SpeedMultiplier = (int)MathHelper.Clamp(NewSpeed, 1, SpeedMultiplier_MaxGetter(Block)));
             SpeedMultiplier.Writer = (Block, Info) => Info.Append($"x{BlockReturn(Block, x => Math.Round(x.TermControls.SpeedMultiplier * WeldGrindSpeedMultiplier_Getter(x.Block), 2))}");
             return SpeedMultiplier;
         }
@@ -166,7 +167,7 @@ namespace EemRdx.LaserWelders.SessionModules
             DistanceMode.Visible = HasBlockLogic;
             DistanceMode.Getter = (Block) => BlockReturn(Block, x => x.TermControls.DistanceMode);
             DistanceMode.Setter = (Block, NewMode) => BlockAction(Block, x => x.TermControls.DistanceMode = NewMode);
-            DistanceMode.Title = MyStringId.GetOrCompute("Distance-based Mode");
+            DistanceMode.Title = MyStringId.GetOrCompute("Single Block Mode");
             DistanceMode.Tooltip = MyStringId.GetOrCompute($"If enabled, the Laser Tool will build furthest block first (if welding) or dismantle closest block first (if grinding) before proceeding on new one.");
             return DistanceMode;
         }

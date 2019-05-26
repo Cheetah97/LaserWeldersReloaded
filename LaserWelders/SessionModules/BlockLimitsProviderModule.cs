@@ -112,7 +112,8 @@ namespace EemRdx.LaserWelders.SessionModules
                     LimitsUpdater = null;
                     try
                     {
-                        PrintLimits();
+                        if (MyAPIGateway.Session.IsServer && MySessionKernel.Settings.Debug)
+                            PrintLimits();
                     }
                     catch (Exception Scrap)
                     {
