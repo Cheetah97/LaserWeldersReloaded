@@ -70,7 +70,7 @@ namespace EemRdx.LaserWelders
                             WelderGrinderWorkingZoneWidth = 2,
                             DrillingYield = 1,
                             DrillingZoneRadius = 2,
-                            SpeedMultiplierMaxValue = 2,
+                            SpeedMultiplierMaxValue = 1,
                             InternalBeamColor = Color.WhiteSmoke,
                             ExternalWeldBeamColor = new Color(12, 127, 242, 255),
                             ExternalGrindBeamColor = new Color(230, 20, 20, 255),
@@ -78,13 +78,13 @@ namespace EemRdx.LaserWelders
                         ["SmallShipLaserMultitool"] = new ToolTierCharacteristics
                         {
                             ToolSubtypeId = "SmallShipLaserMultitool",
-                            MaxBeamLengthBlocks = 10,
+                            MaxBeamLengthBlocks = 20,
                             DrillingVoxelsPerTick = 4,
                             WeldGrindSpeedMultiplier = 0.5f,
                             WelderGrinderWorkingZoneWidth = 2,
                             DrillingYield = 1,
                             DrillingZoneRadius = 2,
-                            SpeedMultiplierMaxValue = 2,
+                            SpeedMultiplierMaxValue = 1,
                             InternalBeamColor = Color.WhiteSmoke,
                             ExternalWeldBeamColor = new Color(12, 127, 242, 255),
                             ExternalGrindBeamColor = new Color(230, 20, 20, 255),
@@ -106,7 +106,7 @@ namespace EemRdx.LaserWelders
                         ["SmallShipLaserMultitoolMK2"] = new ToolTierCharacteristics
                         {
                             ToolSubtypeId = "SmallShipLaserMultitoolMK2",
-                            MaxBeamLengthBlocks = 20,
+                            MaxBeamLengthBlocks = 40,
                             DrillingVoxelsPerTick = 6,
                             WeldGrindSpeedMultiplier = 1,
                             WelderGrinderWorkingZoneWidth = 3,
