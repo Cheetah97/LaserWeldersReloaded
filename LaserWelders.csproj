@@ -87,6 +87,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="LaserScripts\EEMKernel\BlockKernel.cs" />
+    <Compile Include="LaserScripts\EEMKernel\EntityModules\PowerModuleBase.cs" />
     <Compile Include="LaserScripts\EEMKernel\EntityModules\TerminalControls.cs" />
     <Compile Include="LaserScripts\EEMKernel\EntityModules\PersistenceModuleBase.cs" />
     <Compile Include="LaserScripts\EEMKernel\EntityModules\TerminalControlsHelperModuleBase.cs" />
@@ -178,7 +179,7 @@
     <Compile Include="LaserScripts\LaserWelders\SessionModules\PyroboltTermControlsGeneratorModule.cs" />
     <Compile Include="LaserScripts\LaserWelders\Unused\BlockLimitsProviderModule.cs" />
     <Compile Include="LaserScripts\EEMKernel\SessionModules\ClockGenerator.cs" />
-    <Compile Include="LaserScripts\LaserWelders\SessionModules\GasPowerDensityProviderModule.cs" />
+    <Compile Include="LaserScripts\EEMKernel\SessionModules\GasPowerDensityProviderModule.cs" />
     <Compile Include="LaserScripts\LaserWelders\SessionModules\HUDAPIProviderModule.cs" />
     <Compile Include="LaserScripts\LaserWelders\SessionModules\PerformanceLimiterModule.cs" />
     <Compile Include="LaserScripts\LaserWelders\SessionModules\SCTermControlsGeneratorModule.cs" />

@@ -27,9 +27,8 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
             get { return CurrentSettings.DistanceBased; }
             set
             {
-                LaserToolPersistentStruct newSettings = BlockSettingsSync.Data;
-                newSettings.DistanceBased = value;
-                BlockSettingsSync.Set(newSettings);
+                SetterDel setter = (ref LaserToolPersistentStruct settings) => settings.DistanceBased = value;
+                UpdateSettings(setter);
             }
         }
         public int LaserBeamLength
@@ -37,9 +36,8 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
             get { return CurrentSettings.BeamLength; }
             set
             {
-                LaserToolPersistentStruct newSettings = BlockSettingsSync.Data;
-                newSettings.BeamLength = value;
-                BlockSettingsSync.Set(newSettings);
+                SetterDel setter = (ref LaserToolPersistentStruct settings) => settings.BeamLength = value;
+                UpdateSettings(setter);
             }
         }
         public int SpeedMultiplier
@@ -47,9 +45,8 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
             get { return CurrentSettings.SpeedMultiplier; }
             set
             {
-                LaserToolPersistentStruct newSettings = BlockSettingsSync.Data;
-                newSettings.SpeedMultiplier = value;
-                BlockSettingsSync.Set(newSettings);
+                SetterDel setter = (ref LaserToolPersistentStruct settings) => settings.SpeedMultiplier = value;
+                UpdateSettings(setter);
             }
         }
 
@@ -61,9 +58,8 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
             get { return CurrentSettings.ToolMode; }
             set
             {
-                LaserToolPersistentStruct newSettings = BlockSettingsSync.Data;
-                newSettings.ToolMode = value;
-                BlockSettingsSync.Set(newSettings);
+                SetterDel setter = (ref LaserToolPersistentStruct settings) => settings.ToolMode = value;
+                UpdateSettings(setter);
             }
         }
         public bool DumpStone
@@ -71,9 +67,8 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
             get { return CurrentSettings.DumpStone; }
             set
             {
-                LaserToolPersistentStruct newSettings = BlockSettingsSync.Data;
-                newSettings.DumpStone = value;
-                BlockSettingsSync.Set(newSettings);
+                SetterDel setter = (ref LaserToolPersistentStruct settings) => settings.DumpStone = value;
+                UpdateSettings(setter);
             }
         }
         #endregion

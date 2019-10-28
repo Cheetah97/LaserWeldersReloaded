@@ -139,7 +139,7 @@ namespace EemRdx.LaserWelders.Helpers
             return VoxelPoints;
         }
 
-        public static MyStorageData GetVoxelCacheInSphere(this IMyVoxelBase Voxel, BoundingSphereD Sphere, out Vector3I refCorner)
+        public static MyStorageData GetVoxelCacheInSphere(this IMyVoxelBase Voxel, BoundingSphereD Sphere, out Vector3I refCorner, out Vector3I refMaxCorner)
         {
             if (Voxel == null) throw new ArgumentNullException(nameof(Voxel));
             if (Voxel.Storage == null) throw new ArgumentException("Voxel.Storage is null");
@@ -156,6 +156,7 @@ namespace EemRdx.LaserWelders.Helpers
             MyVoxelRequestFlags myVoxelRequestFlags = MyVoxelRequestFlags.AdviseCache | MyVoxelRequestFlags.ConsiderContent;
             Voxel.Storage.ReadRange(cache, MyStorageDataTypeFlags.ContentAndMaterial, 0, minCorner1, maxCorner1, ref myVoxelRequestFlags);
             refCorner = minCorner1;
+            refMaxCorner = maxCorner1;
             return cache;
         }
 

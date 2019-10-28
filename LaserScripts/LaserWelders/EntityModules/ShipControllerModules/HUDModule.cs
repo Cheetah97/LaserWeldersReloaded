@@ -42,7 +42,7 @@ namespace EemRdx.LaserWelders.EntityModules.ShipControllerModules
         private IReadOnlyList<ILaserToolKernel> Tools => MyKernel.ToolListProvider?.Tools;
         private readonly StringBuilder customInfo = new StringBuilder();
         private readonly MyStringId MATERIAL_VANILLA_SQUARE = MyStringId.GetOrCompute("Square");
-        private Vector2D DefaultOrigin = new Vector2D(-0.95f, 0.95);
+        private Vector2D DefaultOrigin = new Vector2D(-0.98f, 0.98);
         public bool SCControlledByLocalPlayer => MyAPIGateway.Session?.LocalHumanPlayer?.Controller?.ControlledEntity == MyKernel.SC;
 
         void InitializableModule.Init()
@@ -98,6 +98,7 @@ namespace EemRdx.LaserWelders.EntityModules.ShipControllerModules
             if (!inited || !HudAPI.Heartbeat) return false;
             if (Tools == null) return false;
             if (!SCControlledByLocalPlayer) return false;
+            if (Tools.Count == 0) return false;
             
 
             return MyKernel.TermControls?.ShowHud == true;

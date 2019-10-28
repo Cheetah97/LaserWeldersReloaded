@@ -13,6 +13,7 @@ using VRage.Game.ModAPI;
 using VRage.Utils;
 using VRageMath;
 using MyItemType = VRage.Game.ModAPI.Ingame.MyItemType;
+using ListOfBlocks = System.Collections.Generic.IReadOnlyList<VRage.MyTuple<VRage.Game.MyDefinitionId, VRageMath.Vector3I, VRageMath.Vector3D, float, System.Collections.Generic.IReadOnlyDictionary<string, int>>>;
 
 namespace EemRdx.LaserWelders.SessionModules
 {
@@ -211,21 +212,9 @@ namespace EemRdx.LaserWelders.SessionModules
 
             Func<LaserToolKernel, bool> getter = kernel => kernel.TermControls.DumpStone;
             Action<LaserToolKernel, bool> setter = (kernel, NewMode) => kernel.TermControls.DumpStone = NewMode;
-            return DefaultOnOffSwitch("DumpStone", controlTexts, actionTexts, true, getter, setter, InvalidForSeats);
+            Func<LaserToolKernel, bool> enabled = kernel => MySessionKernel.Settings.EnableDrilling;
+            return DefaultOnOffSwitch("DumpStone", controlTexts, actionTexts, true, getter, setter, InvalidForSeats, enabled);
         }
-
-        //public IMyTerminalControlCheckbox DumpStone()
-        //{
-        //    IMyTerminalControlCheckbox DumpStone = MyAPIGateway.TerminalControls.CreateControl<IMyTerminalControlCheckbox, IMyShipWelder>("DumpStone");
-        //    DumpStone.SupportsMultipleBlocks = true;
-        //    DumpStone.Enabled = (Block) => MySessionKernel.Settings.EnableDrilling && HasBlockLogic(Block);
-        //    DumpStone.Visible = HasBlockLogic;
-        //    DumpStone.Getter = (Block) => BlockReturn(Block, x => x.TermControls.DumpStone);
-        //    DumpStone.Setter = (Block, NewMode) => BlockAction(Block, x => x.TermControls.DumpStone = NewMode);
-        //    DumpStone.Title = MyStringId.GetOrCompute("Dump Stone");
-        //    DumpStone.Tooltip = MyStringId.GetOrCompute($"If enabled, the Laser Tool will not pick up stone when drilling voxels.");
-        //    return DumpStone;
-        //}
         #endregion
 
         #region Property Definitions
@@ -244,9 +233,9 @@ namespace EemRdx.LaserWelders.SessionModules
             return BlockReturn(Block, kernel => kernel.Responder.LastReportedMissingComponents);
         }
 
-        private IMyTerminalControlProperty<long> LastOperatedGrid()
+        private IMyTerminalControlProperty<IReadOnlyList<long>> LastOperatedGrid()
         {
-            IMyTerminalControlProperty<long> LastOperatedGrid = MyAPIGateway.TerminalControls.CreateProperty<long, IMyShipWelder>("TargetGrid");
+            IMyTerminalControlProperty<IReadOnlyList<long>> LastOperatedGrid = MyAPIGateway.TerminalControls.CreateProperty<IReadOnlyList<long>, IMyShipWelder>("TargetGrids");
             LastOperatedGrid.Enabled = Block => HasBlockLogic(Block);
             LastOperatedGrid.Getter = LastOperatedGrid_Getter;
             LastOperatedGrid.Setter = DefaultInvalidPropertySetter;
@@ -254,14 +243,14 @@ namespace EemRdx.LaserWelders.SessionModules
             return LastOperatedGrid;
         }
 
-        private long LastOperatedGrid_Getter(IMyTerminalBlock Block)
+        private IReadOnlyList<long> LastOperatedGrid_Getter(IMyTerminalBlock Block)
         {
-            return BlockReturn(Block, kernel => (kernel.Responder.LastOperatedGrid != null ? kernel.Responder.LastOperatedGrid.EntityId : 0), Default: 0);
+            return BlockReturn(Block, kernel => kernel.Responder.LastOperatedGrids.Select(x => x.EntityId).ToList().AsReadOnly());
         }
 
-        private IMyTerminalControlProperty<IReadOnlyList<MyTuple<MyDefinitionId, Vector3I, Vector3D, float, IReadOnlyDictionary<string, int>>>> LastOperatedGridBlocks()
+        private IMyTerminalControlProperty<IReadOnlyList<ListOfBlocks>> LastOperatedGridBlocks()
         {
-            IMyTerminalControlProperty<IReadOnlyList<MyTuple<MyDefinitionId, Vector3I, Vector3D, float, IReadOnlyDictionary<string, int>>>> LastOperatedGridBlocks = MyAPIGateway.TerminalControls.CreateProperty<IReadOnlyList<MyTuple<MyDefinitionId, Vector3I, Vector3D, float, IReadOnlyDictionary<string, int>>>, IMyShipWelder>("TargetGridBlocks");
+            IMyTerminalControlProperty<IReadOnlyList<ListOfBlocks>> LastOperatedGridBlocks = MyAPIGateway.TerminalControls.CreateProperty<IReadOnlyList<ListOfBlocks>, IMyShipWelder>("TargetGridsBlocks");
             LastOperatedGridBlocks.Enabled = Block => HasBlockLogic(Block);
             LastOperatedGridBlocks.Getter = LastOperatedGridBlocks_Getter;
             LastOperatedGridBlocks.Setter = DefaultInvalidPropertySetter;
@@ -269,25 +258,25 @@ namespace EemRdx.LaserWelders.SessionModules
             return LastOperatedGridBlocks;
         }
 
-        private IReadOnlyList<MyTuple<MyDefinitionId, Vector3I, Vector3D, float, IReadOnlyDictionary<string, int>>> LastOperatedGridBlocks_Getter(IMyTerminalBlock Block)
+        private IReadOnlyList<ListOfBlocks> LastOperatedGridBlocks_Getter(IMyTerminalBlock Block)
         {
-            var DefaultRetval = new List<MyTuple<MyDefinitionId, Vector3I, Vector3D, float, IReadOnlyDictionary<string, int>>>(0);
+            var Retval = new List<ListOfBlocks>(0);
 
             LaserToolKernel LaserKernel;
             if (!Block.TryGetComponent(out LaserKernel)) return null;
 
-            IMyCubeGrid grid = LaserKernel.Responder.LastOperatedGrid;
-            if (grid == null) return DefaultRetval;
+            foreach (IMyCubeGrid grid in LaserKernel.Responder.LastOperatedGrids)
+            {
+                GridKernel gridKernel;
+                if (grid.TryGetComponent(out gridKernel)) Retval.Add(gridKernel.BlockDataCachingModule.BlockDataCache);
+            }
 
-            GridKernel gridKernel;
-            if (!grid.TryGetComponent(out gridKernel)) return DefaultRetval;
-
-            return gridKernel.BlockDataCachingModule.BlockDataCache;
+            return Retval;
         }
 
-        private IMyTerminalControlProperty<long> LastOperatedProjectedGrid()
+        private IMyTerminalControlProperty<IReadOnlyList<long>> LastOperatedProjectedGrid()
         {
-            IMyTerminalControlProperty<long> LastOperatedProjectedGrid = MyAPIGateway.TerminalControls.CreateProperty<long, IMyShipWelder>("TargetProjectedGrid");
+            IMyTerminalControlProperty<IReadOnlyList<long>> LastOperatedProjectedGrid = MyAPIGateway.TerminalControls.CreateProperty<IReadOnlyList<long>, IMyShipWelder>("TargetProjectedGrids");
             LastOperatedProjectedGrid.Enabled = Block => HasBlockLogic(Block);
             LastOperatedProjectedGrid.Getter = LastOperatedProjectedGrid_Getter;
             LastOperatedProjectedGrid.Setter = DefaultInvalidPropertySetter;
@@ -295,14 +284,14 @@ namespace EemRdx.LaserWelders.SessionModules
             return LastOperatedProjectedGrid;
         }
 
-        private long LastOperatedProjectedGrid_Getter(IMyTerminalBlock Block)
+        private IReadOnlyList<long> LastOperatedProjectedGrid_Getter(IMyTerminalBlock Block)
         {
-            return BlockReturn(Block, kernel => (kernel.Responder.LastOperatedProjectedGrid != null ? kernel.Responder.LastOperatedProjectedGrid.EntityId : 0), Default: 0);
+            return BlockReturn(Block, kernel => kernel.Responder.LastOperatedProjectedGrids.Select(x => x.EntityId).ToList().AsReadOnly());
         }
 
-        private IMyTerminalControlProperty<IReadOnlyList<MyTuple<MyDefinitionId, Vector3I, Vector3D, float, IReadOnlyDictionary<string, int>>>> LastOperatedProjectedGridBlocks()
+        private IMyTerminalControlProperty<IReadOnlyList<ListOfBlocks>> LastOperatedProjectedGridBlocks()
         {
-            IMyTerminalControlProperty<IReadOnlyList<MyTuple<MyDefinitionId, Vector3I, Vector3D, float, IReadOnlyDictionary<string, int>>>> LastOperatedProjectedGridBlocks = MyAPIGateway.TerminalControls.CreateProperty<IReadOnlyList<MyTuple<MyDefinitionId, Vector3I, Vector3D, float, IReadOnlyDictionary<string, int>>>, IMyShipWelder>("TargetGridBlocks");
+            IMyTerminalControlProperty<IReadOnlyList<ListOfBlocks>> LastOperatedProjectedGridBlocks = MyAPIGateway.TerminalControls.CreateProperty<IReadOnlyList<ListOfBlocks>, IMyShipWelder>("TargetProjectedGridsBlocks");
             LastOperatedProjectedGridBlocks.Enabled = Block => HasBlockLogic(Block);
             LastOperatedProjectedGridBlocks.Getter = LastOperatedProjectedGridBlocks_Getter;
             LastOperatedProjectedGridBlocks.Setter = DefaultInvalidPropertySetter;
@@ -310,20 +299,20 @@ namespace EemRdx.LaserWelders.SessionModules
             return LastOperatedProjectedGridBlocks;
         }
 
-        private IReadOnlyList<MyTuple<MyDefinitionId, Vector3I, Vector3D, float, IReadOnlyDictionary<string, int>>> LastOperatedProjectedGridBlocks_Getter(IMyTerminalBlock Block)
+        private IReadOnlyList<ListOfBlocks> LastOperatedProjectedGridBlocks_Getter(IMyTerminalBlock Block)
         {
-            var DefaultRetval = new List<MyTuple<MyDefinitionId, Vector3I, Vector3D, float, IReadOnlyDictionary<string, int>>>(0);
+            var Retval = new List<ListOfBlocks>(0);
 
             LaserToolKernel LaserKernel;
             if (!Block.TryGetComponent(out LaserKernel)) return null;
 
-            IMyCubeGrid grid = LaserKernel.Responder.LastOperatedProjectedGrid;
-            if (grid == null) return DefaultRetval;
+            foreach (IMyCubeGrid grid in LaserKernel.Responder.LastOperatedGrids)
+            {
+                GridKernel gridKernel;
+                if (grid.TryGetComponent(out gridKernel)) Retval.Add(gridKernel.BlockDataCachingModule.BlockDataCache);
+            }
 
-            GridKernel gridKernel;
-            if (!grid.TryGetComponent(out gridKernel)) return DefaultRetval;
-
-            return gridKernel.BlockDataCachingModule.BlockDataCache;
+            return Retval;
         }
         #endregion
     }

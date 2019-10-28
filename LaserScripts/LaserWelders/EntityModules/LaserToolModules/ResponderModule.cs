@@ -4,13 +4,15 @@ using System.Collections.Generic;
 using MyItemType = VRage.Game.ModAPI.Ingame.MyItemType;
 using System.Text;
 using VRage.Game.ModAPI;
+using System.Linq;
+using Sandbox.Game.Entities;
 
 namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
 {
     public interface IResponder : IEntityModule
     {
-        IMyCubeGrid LastOperatedGrid { get; }
-        IMyCubeGrid LastOperatedProjectedGrid { get; }
+        List<IMyCubeGrid> LastOperatedGrids { get; }
+        List<IMyCubeGrid> LastOperatedProjectedGrids { get; }
         IReadOnlyDictionary<MyItemType, float> LastReportedMissingComponents { get; }
         LaserToolStatus ToolStatus { get; }
         string ToolStatusReport { get; }
@@ -18,8 +20,8 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
 
     public interface IResponderModuleInternal : IResponder
     {
-        void UpdateLastOperatedGrid(IMyCubeGrid LastOperatedGrid);
-        void UpdateLastOperatedProjectedGrid(IMyCubeGrid LastOperatedProjectedGrid);
+        void UpdateLastOperatedGrids(List<IMyCubeGrid> LastOperatedGrids);
+        void UpdateLastOperatedProjectedGrids(List<IMyCubeGrid> LastOperatedProjectedGrids);
         void UpdateMissing(Dictionary<MyItemType, float> _missingComponents);
         void UpdateStatusReport(StringBuilder newReport, bool append);
         void UpdateStatusReport(string newReport, bool append);
@@ -44,10 +46,10 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
 
         string IResponder.ToolStatusReport => ToolStatusReport.ToString();
 
-        public IMyCubeGrid LastOperatedGrid { get; private set; }
+        public List<IMyCubeGrid> LastOperatedGrids { get; private set; } = new List<IMyCubeGrid>();
         private int LastOperatedGridLastSet = 0;
 
-        public IMyCubeGrid LastOperatedProjectedGrid { get; private set; }
+        public List<IMyCubeGrid> LastOperatedProjectedGrids { get; private set; } = new List<IMyCubeGrid>();
         private int LastOperatedProjectedGridLastSet = 0;
 
         private StringBuilder ToolStatusReport = new StringBuilder();
@@ -63,10 +65,14 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
 
             const int resetAfter = 3 * 60;
             if (MyKernel.Session.Clock.Ticker >= (LastOperatedGridLastSet + resetAfter))
-                LastOperatedGrid = null;
+            {
+                LastOperatedGrids.Clear();
+            }
 
             if (MyKernel.Session.Clock.Ticker >= (LastOperatedProjectedGridLastSet + resetAfter))
-                LastOperatedProjectedGrid = null;
+            {
+                LastOperatedProjectedGrids.Clear();
+            }
         }
 
         public void UpdateMissing(Dictionary<MyItemType, float> _missingComponents)
@@ -92,7 +98,7 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
         public void UpdateStatusReport(string newReport, bool append)
         {
             if (!append) ToolStatusReport.Clear();
-            ToolStatusReport.Append(newReport);
+            ToolStatusReport.AppendLine(newReport);
         }
 
         private void UpdateToolStatus()
@@ -118,14 +124,32 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
 
         public void UpdateLastOperatedGrid(IMyCubeGrid LastOperatedGrid)
         {
-            this.LastOperatedGrid = LastOperatedGrid;
+            if (!LastOperatedGrids.Contains(LastOperatedGrid)) LastOperatedGrids.Add(LastOperatedGrid);
             LastOperatedGridLastSet = MyKernel.Session.Clock.Ticker;
         }
 
         public void UpdateLastOperatedProjectedGrid(IMyCubeGrid LastOperatedProjectedGrid)
         {
-            this.LastOperatedProjectedGrid = LastOperatedProjectedGrid;
+            if (!LastOperatedProjectedGrids.Contains(LastOperatedProjectedGrid)) LastOperatedProjectedGrids.Add(LastOperatedProjectedGrid);
             LastOperatedProjectedGridLastSet = MyKernel.Session.Clock.Ticker;
+        }
+
+        public void UpdateLastOperatedGrids(List<IMyCubeGrid> LastOperatedGrids)
+        {
+            UpdateGridList(this.LastOperatedGrids);
+            LastOperatedProjectedGridLastSet = MyKernel.Session.Clock.Ticker;
+        }
+
+        public void UpdateLastOperatedProjectedGrids(List<IMyCubeGrid> LastOperatedProjectedGrids)
+        {
+            UpdateGridList(this.LastOperatedProjectedGrids);
+            LastOperatedProjectedGridLastSet = MyKernel.Session.Clock.Ticker;
+        }
+
+        private void UpdateGridList(List<IMyCubeGrid> Grids)
+        {
+            Grids.Clear();
+            Grids.AddRange(Grids);
         }
     }
 

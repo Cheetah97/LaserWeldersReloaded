@@ -1,10 +1,5 @@
-﻿using System;
-using EemRdx;
-using EemRdx.EntityModules;
-using EemRdx.LaserWelders;
-using Sandbox.Common.ObjectBuilders;
+﻿using EemRdx.EntityModules;
 using Sandbox.ModAPI;
-using VRage.Game.Components;
 
 namespace EemRdx.LaserWelders
 {

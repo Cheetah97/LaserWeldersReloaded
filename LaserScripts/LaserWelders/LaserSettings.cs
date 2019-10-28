@@ -63,7 +63,7 @@ namespace EemRdx.LaserWelders
         {
             get
             {
-                bool upsideDown = true;
+                bool upsideDown = false;
                 if (upsideDown)
                 {
                     return new LaserSettings()

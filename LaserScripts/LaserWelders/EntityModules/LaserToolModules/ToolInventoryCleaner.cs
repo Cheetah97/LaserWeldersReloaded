@@ -75,6 +75,9 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                 if (Block is IMyCargoContainer) return 50;
                 if (Block is IMyShipConnector) return 40;
                 if (Block is IMyCollector) return 30;
+                if (Block is IMyReactor) return -1;
+                if (Block is IMyGasGenerator) return -1;
+                if (Block is IMyGasTank) return -1;
 
                 return 0;
             };

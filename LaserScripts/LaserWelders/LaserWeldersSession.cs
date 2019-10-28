@@ -5,7 +5,10 @@ using System.Text;
 using EemRdx.EntityModules;
 using EemRdx.Extensions;
 using EemRdx.LaserWelders.SessionModules;
+using Sandbox.Common.ObjectBuilders;
+using Sandbox.Common.ObjectBuilders.Definitions;
 using Sandbox.ModAPI;
+using SpaceEngineers.Game.ModAPI;
 using VRage.Game.Components;
 using VRage.Game.ModAPI;
 using VRage.ModAPI;
@@ -17,7 +20,6 @@ namespace EemRdx.LaserWelders
         LaserSettings Settings { get; }
         //IBlockLimitsProvider BlockLimits { get; }
         IHUDAPIProvider HUDAPIProvider { get; }
-        IGasPowerDensityProvider GasPowerDensityProvider { get; }
         IPerformanceLimiterModule PerformanceLimiter { get; }
     }
 
@@ -31,7 +33,6 @@ namespace EemRdx.LaserWelders
         public LaserSettings Settings => (SettingsProvider != null ? SettingsProvider.Settings : LaserSettings.Default);
         //public IBlockLimitsProvider BlockLimits => GetModule<IBlockLimitsProvider>();
         public IHUDAPIProvider HUDAPIProvider => GetModule<IHUDAPIProvider>();
-        public IGasPowerDensityProvider GasPowerDensityProvider => GetModule<IGasPowerDensityProvider>();
         public IPerformanceLimiterModule PerformanceLimiter => GetModule<IPerformanceLimiterModule>();
         public static LaserWeldersSessionKernel LaserWeldersSession { get; private set; }
 
@@ -48,7 +49,6 @@ namespace EemRdx.LaserWelders
             //Modules.Add(new BlockLimitsProviderModule(this));
             Modules.Add(new PerformanceLimiterModule(this));
             Modules.Add(new HUDAPIProviderModule(this));
-            Modules.Add(new GasPowerDensityProviderModule(this));
         }
 
         public LaserWeldersSessionKernel() : base()

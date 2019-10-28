@@ -16,10 +16,10 @@ namespace EemRdx.LaserWelders.EntityModules.ShipControllerModules
 
         public override SCPersistentStruct Default { get; } = new SCPersistentStruct
         {
-            ShowHud = true,
+            ShowHud = false,
             ShowBlocksOnHud = true,
-            HudPosX = -0.95f,
-            HudPosY = 0.95f,
+            HudPosX = -0.98f,
+            HudPosY = 0.98f,
             VerboseHud = false,
         };
     }

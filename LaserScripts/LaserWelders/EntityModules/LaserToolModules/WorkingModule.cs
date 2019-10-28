@@ -28,6 +28,7 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
     {
         private int VoxelIterationLimit => ToolCharacteristics.DrillingVoxelsPerTick;
         private float CutoutRadius => ToolCharacteristics.DrillingZoneRadius;
+        private float DrillingOffsetM => CutoutRadius * 0.6f;
         private float WeldGrindSpeedMultiplier => ToolCharacteristics.WeldGrindSpeedMultiplier;
         private float DrillingYield => ToolCharacteristics.DrillingYield;
 
@@ -166,8 +167,8 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                 CurrentBlockWorkingProcess = null;
                 //WriteToLog("ProcessGrids", $"Block worker disposed");
             }
-            MyKernel.ResponderModule.UpdateLastOperatedGrid(RealGrids.OrderByDescending(x => (x as MyCubeGrid).BlocksCount).FirstOrDefault());
-            MyKernel.ResponderModule.UpdateLastOperatedProjectedGrid(ProjectedGrids.OrderByDescending(x => (x as MyCubeGrid).BlocksCount).FirstOrDefault());
+            MyKernel.ResponderModule.UpdateLastOperatedGrids(RealGrids);
+            MyKernel.ResponderModule.UpdateLastOperatedProjectedGrids(ProjectedGrids);
 
             yield return false;
         }
@@ -196,14 +197,8 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                     }
                     else
                     {
-                        Stopwatch watch = Stopwatch.StartNew();
                         if (!SafeZonesHelper.IsActionAllowed(Grid.WorldAABB, MySafeZoneAction.Grinding, MyKernel.Block.EntityId)) continue;
-                        //watch.Stop();
-                        //WriteToLog("ProcessGrids", $"Safe zone check took {Math.Round(watch.Elapsed.TotalMilliseconds, 3)}ms", EemRdx.SessionModules.LoggingLevelEnum.ProfilingLog);
-                        //watch.Restart();
                         Grid.GetBlocksOnRay(RayGrid, RealBlocks, IsBlockGrindable);
-                        //watch.Stop();
-                        //WriteToLog("ProcessGrids", $"Getting blocks took {Math.Round(watch.Elapsed.TotalMilliseconds, 3)}ms", EemRdx.SessionModules.LoggingLevelEnum.ProfilingLog);
                     }
                 }
                 catch (Exception Scrap)
@@ -238,6 +233,7 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                 Vector3D? VoxelHit = Voxel.GetClosestPointOnRay(WorkingRay, step: 0.99f);
                 if (VoxelHit.HasValue)
                 {
+                    MyKernel.ResponderModule.UpdateStatusReport($"\r\nFound a voxel", true);
                     lock(BlockedVoxels)
                     {
                         if (!BlockedVoxels.ContainsKey(Voxel.EntityId))
@@ -247,24 +243,28 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                     }
                     Vector3D hitpos = VoxelHit.Value;
                     //MyVoxelMaterialDefinition Material = Voxel.GetMaterialAt(ref hitpos);
-                    Vector3D CutoutSphereCenter = hitpos;// + (-WorkingRay.Direction * (0.6f * CutoutRadius));
-                    stopwatch.Stop();
+                    Vector3D CutoutSphereCenter = hitpos + (-WorkingRay.Direction * DrillingOffsetM);
+                    //stopwatch.Stop();
                     //WriteToLog("ProcessVoxels", $"Hit: {Math.Round(Vector3D.Distance(WorkingRay.From, hitpos), 2)}m, cutout: {Math.Round(Vector3D.Distance(WorkingRay.From, CutoutSphereCenter), 2)} m away, Material: {(Material != null ? Material.MaterialTypeName : "null")}");
-                    stopwatch.Start();
+                    //stopwatch.Start();
 
                     BoundingSphereD Cutout = new BoundingSphereD(CutoutSphereCenter, CutoutRadius);
 
                     //List<Vector3I> VoxelPoints = Voxel.GetVoxelPointsInSphere(Cutout);
                     Vector3I refCorner;
-                    MyStorageData cutoutVoxels = Voxel.GetVoxelCacheInSphere(Cutout, out refCorner);
+                    Vector3I refMaxCorner;
+                    MyStorageData cutoutVoxels = Voxel.GetVoxelCacheInSphere(Cutout, out refCorner, out refMaxCorner);
                     //WriteToLog("ProcessVoxels", $"Cutout cache Min is {Math.Round(Vector3D.Distance(hitpos, Voxel.PositionLeftBottomCorner + refCorner), 2)}m away");
                     //WriteToLog("ProcessVoxels", $"Cutout cache Max is {Math.Round(Vector3D.Distance(hitpos, Voxel.PositionLeftBottomCorner + refCorner + cutoutVoxels.Size3D), 2)}m away");
                     Dictionary<MyVoxelMaterialDefinition, float> Materials = new Dictionary<MyVoxelMaterialDefinition, float>();
 
                     int nullMaterials = 0;
                     int totalPoints = 0;
-                    using (MyStorageData.MortonEnumerator VoxelLoop = new MyStorageData.MortonEnumerator(cutoutVoxels, MyStorageDataTypeEnum.Content))
+                    Stopwatch enumeratorWatch = new Stopwatch();
+                    using (MyStorageData.MortonEnumerator VoxelLoop = new MyStorageData.MortonEnumerator(cutoutVoxels, MyStorageDataTypeEnum.Content | MyStorageDataTypeEnum.Material))
                     {
+                        MyKernel.ResponderModule.UpdateStatusReport($"Entered enumerator", true);
+                        enumeratorWatch.Start();
                         Dictionary<byte, float> RawMaterials = new Dictionary<byte, float>();
                         Vector3I VoxelInSphereCenter;
                         Vector3 CoordsSystemOutValue;
@@ -282,14 +282,15 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                         int linearIndex = -1;
                         for (bool move = true; move != false;)
                         {
+                            enumeratorWatch.Start();
                             try
                             {
                                 move = VoxelLoop.MoveNext();
                             }
-                            catch (Exception Scrap)
+                            catch
                             {
                                 move = false;
-                                LogError("ProcessVoxels", $"KeenSWH's voxel enumerator broke:", Scrap, EemRdx.SessionModules.LoggingLevelEnum.DebugLog);
+                                MyKernel.ResponderModule.UpdateStatusReport("Keen enumerator died", true);
                             }
                             if (move)
                             {
@@ -297,8 +298,11 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                                 Vector3I voxelPoint;
                                 cutoutVoxels.ComputePosition(linearIndex, out voxelPoint);
                                 voxelPoint += refCorner;
+                                BoundingBoxD voxelBox = new BoundingBoxD(Voxel.PositionLeftBottomCorner + voxelPoint, Voxel.PositionLeftBottomCorner + voxelPoint + 1);
 
-                                if (Vector3D.DistanceSquared(ReconstructedPosition, Voxel.PositionLeftBottomCorner + voxelPoint) <= CutoutRadiusSquared)
+                                var PointContainment = Cutout.Contains(voxelBox);
+                                bool Contacts = PointContainment.HasFlag(ContainmentType.Contains) || PointContainment.HasFlag(ContainmentType.Intersects);
+                                if (Contacts || Vector3D.DistanceSquared(ReconstructedPosition, Voxel.PositionLeftBottomCorner + voxelPoint) <= CutoutRadiusSquared)
                                 {
                                     bool pointBlocked = true;
                                     lock (BlockedVoxels)
@@ -324,20 +328,21 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                                     }
                                     else skippedPoints++;
                                 }
-                                //else
-                                //{
-                                //    WriteToLog("ProcessVoxels", $"Discarding voxel {linearIndex}: distance is {Math.Round(Vector3D.Distance(ReconstructedPosition, Voxel.PositionLeftBottomCorner + voxelPoint), 2)}m");
-                                //}
+                                else skippedPoints++;
 
                                 int voxelIterationLimit = MyKernel.Session.Settings.SpeedMultiplierAcceleratesDrilling ? VoxelIterationLimit * MyKernel.TermControls.SpeedMultiplier : VoxelIterationLimit;
                                 if (processedPoints > 0 && processedPoints % voxelIterationLimit == 0)
                                 {
-                                    MyKernel.ResponderModule.UpdateStatusReport($"Cutting out {Math.Round(Cutout.Radius * 2, 1)}m sphere:\r\n{linearIndex} voxels processed", append: false);
+                                    //MyKernel.ResponderModule.UpdateStatusReport($"Cutting out {Math.Round(Cutout.Radius * 2, 1)}m sphere:\r\n{linearIndex} voxels processed", append: true);
+                                    enumeratorWatch.Stop();
                                     yield return true;
                                 }
                             }
                             totalPoints = linearIndex;
                         }
+                        MyKernel.ResponderModule.UpdateStatusReport($"Total processed points: {totalPoints} ({processedPoints}/{skippedPoints})", true);
+                        enumeratorWatch.Stop();
+                        MyKernel.ResponderModule.UpdateStatusReport($"EnumeratorWatch: {Math.Round(enumeratorWatch.Elapsed.TotalMilliseconds, 3)}ms", true);
                         //WriteToLog("ProcessVoxels", $"Found {processedPoints} valid voxel points out of {totalPoints}", EemRdx.SessionModules.LoggingLevelEnum.DebugLog, true, 2000);
 
                         foreach (KeyValuePair<byte, float> kvp in RawMaterials)
@@ -354,6 +359,7 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                             }
                         }
                     }
+                    MyKernel.ResponderModule.UpdateStatusReport($"Quitted enumerator", true);
                     //WriteToLog("ProcessVoxels", $"Found {VoxelPoints.Count} valid voxel points", EemRdx.SessionModules.LoggingLevelEnum.DebugLog, true, 2000);
                     //WriteToLog("ProcessVoxels", $"Found {Materials.Count} valid materials{(nullMaterials > 0 ? $" and {nullMaterials} null materials" : "")}", EemRdx.SessionModules.LoggingLevelEnum.DebugLog, true, 2000);
                     //foreach (var kvp in Materials)
@@ -361,6 +367,7 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                     //    WriteToLog("ProcessVoxels", $"Material: {kvp.Key.MaterialTypeName} (mined ore: {(kvp.Key.MinedOre != null ? kvp.Key.MinedOre : "null")}), amount: {kvp.Value}");
                     //}
 
+                    MyKernel.ResponderModule.UpdateStatusReport($"Calculating materials", true);
                     Dictionary<MyObjectBuilder_Ore, float> MaterialsToAdd = new Dictionary<MyObjectBuilder_Ore, float>();
                     int nullMinedOres = 0;
                     foreach (KeyValuePair<MyVoxelMaterialDefinition, float> kvp in Materials)
@@ -390,6 +397,7 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                     }
                     
                     Stopwatch cutoutWatch = Stopwatch.StartNew();
+                    //Voxel.Storage.WriteRange(cutoutVoxels, MyStorageDataTypeFlags.ContentAndMaterial, refCorner - 1, refMaxCorner + 1);
                     Voxel.RootVoxel.PerformCutOutSphereFast(Cutout.Center, (float)Cutout.Radius, true);
                     cutoutWatch.Stop();
                     //WriteToLog("ProcessVoxels", $"Sphere was cut in {cutoutWatch.ElapsedTicks} ticks, which is {Math.Round(cutoutWatch.Elapsed.TotalMilliseconds, 4)} ms");
@@ -412,11 +420,15 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                         }
                     }
                 }
+                else
+                {
+                    MyKernel.ResponderModule.UpdateStatusReport($"No voxel found", true);
+                }
             }
             stopwatch.Stop();
             double ElapsedMs = stopwatch.Elapsed.TotalMilliseconds;
             //WriteToLog("ProcessVoxels", $"Voxels processed, elapsed time: {stopwatch.ElapsedTicks} ticks, which is {Math.Round(ElapsedMs, 3)} ms");
-
+            MyKernel.ResponderModule.UpdateStatusReport($"Cycle finished", true);
             yield return false;
         }
 
@@ -440,7 +452,7 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
                 //MyKernel.SessionBase.Log.DebugLog.WriteToLog($"WeldAndPlaceBlocks", $"Selected block for distance mode");
             }
 
-            float SpeedRatio = (VanillaToolConstants.WelderSpeed / RealBlocks.Count) * NominalWorkingFrequency * MyKernel.TermControls.SpeedMultiplier * WeldGrindSpeedMultiplier;
+            float SpeedRatio = NominalWorkingFrequency * MyKernel.TermControls.SpeedMultiplier * WeldGrindSpeedMultiplier * (VanillaToolConstants.WelderSpeed / RealBlocks.Count);
             float BoneFixSpeed = VanillaToolConstants.WelderBoneRepairSpeed * NominalWorkingFrequency;
             IMyProjector Projector = null;
             if (ProjectedBlocks.Count > 0)
@@ -656,14 +668,14 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
         {
             if (Blocks.Count == 0) yield return false;
             if (MyKernel.TermControls.ToolMode == true) yield return false;
-            
-            float SpeedRatio = VanillaToolConstants.GrinderSpeed / (MyKernel.TermControls.DistanceMode ? 1 : Blocks.Count) * NominalWorkingFrequency * MyKernel.TermControls.SpeedMultiplier * WeldGrindSpeedMultiplier;
+
             if (MyKernel.TermControls.DistanceMode)
             {
                 IMySlimBlock ClosestBlock = Blocks.OrderBy(x => Vector3D.DistanceSquared(x.CubeGrid.GridIntegerToWorld(x.Position), MyKernel.Block.GetPosition())).First();
                 Blocks.Clear();
                 Blocks.Add(ClosestBlock);
             }
+            float SpeedRatio = (VanillaToolConstants.GrinderSpeed * NominalWorkingFrequency * MyKernel.TermControls.SpeedMultiplier * WeldGrindSpeedMultiplier) / Blocks.Count;
 
             foreach (IMySlimBlock Block in Blocks)
                 Block.DoDamage(0, MyStringHash.GetOrCompute("Grind"), true, null, MyKernel.Block.EntityId);

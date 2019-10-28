@@ -169,7 +169,7 @@ namespace EemRdx.LaserWelders.EntityModules.LaserToolModules
 
         void InitializableModule.Init()
         {
-            MyKernel.Tool.Synchronized = true;
+            //MyKernel.Tool.Synchronized = true;
             MyKernel.Block.AppendingCustomInfo += Block_AppendingCustomInfo;
         }
 

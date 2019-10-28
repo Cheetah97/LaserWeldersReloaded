@@ -26,6 +26,7 @@ namespace EemRdx.LaserWelders.EntityModules.ShipControllerModules
         private int Ticker => MyKernel.Session.Clock.Ticker;
         private readonly HashSet<IMySlimBlock> BlocksThatShouldBeTracked = new HashSet<IMySlimBlock>();
         private readonly Dictionary<IMySlimBlock, HudAPIv2.SpaceMessage> BlockGPSes = new Dictionary<IMySlimBlock, HudAPIv2.SpaceMessage>();
+        private HudAPIv2 HudAPI => MyKernel.Session?.HUDAPIProvider?.HudAPI;
 
         void InitializableModule.Init()
         {
@@ -86,11 +87,26 @@ namespace EemRdx.LaserWelders.EntityModules.ShipControllerModules
 
         private void CreateNewInstances()
         {
+            if (HudAPI == null) return;
+            if (!HudAPI.Heartbeat) return;
+            if (Ticker < 30) return;
+            if (BlocksThatShouldBeTracked == null) return;
+            if (BlockGPSes == null) return;
             List<IMySlimBlock> BlocksWithoutLabels = BlocksThatShouldBeTracked.Where(x => !BlockGPSes.ContainsKey(x)).ToList();
             foreach (IMySlimBlock Block in BlocksWithoutLabels)
             {
-                HudAPIv2.SpaceMessage BlockSpaceMessage = new HudAPIv2.SpaceMessage(new StringBuilder(), Block.CubeGrid.GridIntegerToWorld(Block.Position), MyKernel.SC.WorldMatrix.Up, MyKernel.SC.WorldMatrix.Left, Scale: 0.5, Offset: new Vector2D(-1, 0), Blend: BlendTypeEnum.AdditiveTop);
-                BlockGPSes.Add(Block, BlockSpaceMessage);
+                if (Block == null) return;
+                HudAPIv2.SpaceMessage BlockSpaceMessage = null;
+                try
+                {
+                    BlockSpaceMessage = new HudAPIv2.SpaceMessage(new StringBuilder(), Block.CubeGrid.GridIntegerToWorld(Block.Position), MyKernel.SC.WorldMatrix.Up, MyKernel.SC.WorldMatrix.Left, Scale: 0.5, Offset: new Vector2D(-1, 0), Blend: BlendTypeEnum.AdditiveTop);
+                }
+                catch (Exception Scrap)
+                {
+                    LogError(nameof(CreateNewInstances), $"HudAPIv2 crashed on block {(Block.FatBlock is IMyTerminalBlock ? $"{Block.FatBlock.BlockDefinition.ToString().Replace("MyObjectBuilder_", "")} {(Block.FatBlock as IMyTerminalBlock).CustomName}" : Block.BlockDefinition.ToString().Replace("MyObjectBuilder_", ""))}", Scrap);
+                }
+                if (BlockSpaceMessage != null)
+                    BlockGPSes.Add(Block, BlockSpaceMessage);
             }
         }
 
@@ -160,10 +176,15 @@ namespace EemRdx.LaserWelders.EntityModules.ShipControllerModules
             Dictionary<long, IMyCubeGrid> GridsOfTools = new Dictionary<long, IMyCubeGrid>();
             foreach (ILaserToolKernel LaserTool in MyKernel.ToolListProvider.Tools)
             {
-                var OpGrid = LaserTool.Responder.LastOperatedGrid;
-                var OpProjectedGrid = LaserTool.Responder.LastOperatedProjectedGrid;
-                if (OpGrid != null && !GridsOfTools.ContainsKey(OpGrid.EntityId)) GridsOfTools.Add(OpGrid.EntityId, OpGrid);
-                if (OpProjectedGrid != null && !GridsOfTools.ContainsKey(OpProjectedGrid.EntityId)) GridsOfTools.Add(OpProjectedGrid.EntityId, OpProjectedGrid);
+                foreach (var OpGrid in LaserTool.Responder.LastOperatedGrids)
+                {
+                    if (OpGrid != null && !GridsOfTools.ContainsKey(OpGrid.EntityId)) GridsOfTools.Add(OpGrid.EntityId, OpGrid);
+                }
+
+                foreach (var OpProjectedGrid in LaserTool.Responder.LastOperatedGrids)
+                {
+                    if (OpProjectedGrid != null && !GridsOfTools.ContainsKey(OpProjectedGrid.EntityId)) GridsOfTools.Add(OpProjectedGrid.EntityId, OpProjectedGrid);
+                }
             }
             return GridsOfTools.Values.ToList();
         }

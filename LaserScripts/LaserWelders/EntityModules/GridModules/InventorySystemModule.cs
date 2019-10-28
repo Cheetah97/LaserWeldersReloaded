@@ -41,7 +41,8 @@ namespace EemRdx.LaserWelders.EntityModules.GridModules
         private Dictionary<ILaserToolKernel, HashSet<IMyTerminalBlock>> InventoriesPerTool = new Dictionary<ILaserToolKernel, HashSet<IMyTerminalBlock>>();
         private IMyGridTerminalSystem Term;
         private int OpLimit => MyKernel.Session.Settings.MaxInventoryUpdatePerTick;
-        private readonly int updateSkipTicks = 3 * 60;
+        private readonly int updateSkipTicks = (3 * 60);
+        private bool useDebug => MyKernel.Session.Settings.Debug;
 
         void InitializableModule.Init()
         {
@@ -67,7 +68,7 @@ namespace EemRdx.LaserWelders.EntityModules.GridModules
             else
             {
                 if (MyKernel.Session.Settings.Debug)
-                    WriteToLog(nameof(GetInventoriesForTool), $"No entries were found for tool {LaserTool.Block.CustomName} on grid {LaserTool.Block.CubeGrid.EntityId}");
+                    WriteToLog(nameof(GetInventoriesForTool), $"No entries were found for tool {LaserTool.Block.CustomName} on grid {LaserTool.Block.CubeGrid.CustomName}. Biggest grid's InventoriesPerTool: {BiggestGridInventorySystem.InventoriesPerTool.Count}, biggest grid's Inventory Owners: {BiggestGridInventorySystem.InventoryOwners.Count}");
             }
         }
 
@@ -80,24 +81,39 @@ namespace EemRdx.LaserWelders.EntityModules.GridModules
         int DueStartTick = 5;
         private void RunUpdate()
         {
-            if (Worker != null)
+            if (Worker == null) return;
+
+            bool move = false;
+            try
             {
-                Worker.MoveNext();
-                bool working = Worker.Current;
-                if (!working)
-                {
-                    Worker.Dispose();
-                    Worker = null;
-                }
+                move = Worker.MoveNext();
+            }
+            catch (Exception Scrap)
+            {
+                LogError(nameof(RunUpdate), "Worker crashed:\r\n", Scrap);
+            }
+            
+            bool working = Worker.Current;
+            if (!(working && move))
+            {
+                Worker.Dispose();
+                Worker = null;
             }
         }
 
         void UpdatableModule.Update()
         {
-            if (Worker == null && Ticker >= DueStartTick && MyKernel.Multigridder.BiggestGrid.Grid.EntityId == MyKernel.Grid.EntityId)
+            bool isBiggestGrid = MyKernel.Multigridder.BiggestGrid.Grid.EntityId == MyKernel.Grid.EntityId;
+
+            if (Worker == null && Ticker >= DueStartTick)
             {
-                if (Ticker > 10) Worker = RefreshInventoryOwners();
-                else Worker = RefreshInventoryOwners(BypassLoadChecks: true);
+                DueStartTick = Ticker + updateSkipTicks;
+                if (useDebug && MyKernel.Multigridder.CompleteGrid.Count > 1)
+                {
+                    WriteToLog("Update", $"Multigridding: Choosing {(isBiggestGrid ? "in favor of" : "against")} updating");
+                }
+
+                if (isBiggestGrid) Worker = RefreshInventoryOwners(BypassLoadChecks: Ticker < 10);
             }
 
             if (Worker != null) RunUpdate();
@@ -109,11 +125,25 @@ namespace EemRdx.LaserWelders.EntityModules.GridModules
 
             foreach (IGridKernel Kernel in MyKernel.Multigridder.CompleteGrid)
             {
-                foreach (KeyValuePair<long, ILaserToolKernel> kvp in (Kernel.InventorySystem as InventorySystemModule).SubscribedLaserTools)
+                var KernelTools = (Kernel.InventorySystem as InventorySystemModule).SubscribedLaserTools;
+                if (useDebug && MyKernel.Multigridder.CompleteGrid.Count > 1)
+                {
+                    WriteToLog("CombineSubscribed", $"Subgrid: {Kernel.Grid.CustomName}, subscribed tools: {KernelTools.Count}");
+                }
+                foreach (KeyValuePair<long, ILaserToolKernel> kvp in KernelTools)
                 {
                     if (!subscribedLaserTools.ContainsKey(kvp.Key))
                         subscribedLaserTools.Add(kvp.Key, kvp.Value);
+                    else
+                    {
+                        WriteToLog("CombineSubscribed", $"Subgrid: {Kernel.Grid.CustomName}: Omitting tool {kvp.Value.Block.CustomName}, already in dictionary with key {kvp.Key} (block's id {kvp.Value.Block.EntityId})");
+                    }
                 }
+            }
+
+            if (useDebug && MyKernel.Multigridder.CompleteGrid.Count > 1)
+            {
+                WriteToLog("CombineSubscribed", $"Complete grid: {MyKernel.Multigridder.CompleteGrid.Count} grids, largest: {MyKernel.Multigridder.BiggestGrid.Grid.CustomName}, subscribed tools: {subscribedLaserTools.Count}");
             }
 
             return subscribedLaserTools;
@@ -121,13 +151,23 @@ namespace EemRdx.LaserWelders.EntityModules.GridModules
 
         IEnumerator<bool> RefreshInventoryOwners(bool BypassLoadChecks = false)
         {
-            bool useDebug = MyKernel.Session.Settings.Debug;
             int opStart = Ticker;
+
+            bool shouldUseDebug = useDebug && MyKernel.Multigridder.CompleteGrid.Count > 1;
+
+            if (shouldUseDebug)
+            {
+                WriteToLog(nameof(RefreshInventoryOwners), $"Starting update...");
+            }
 
             Dictionary<long, ILaserToolKernel> subscribedLaserTools = CombineSubscribed();
             Dictionary<ILaserToolKernel, HashSet<IMyTerminalBlock>> inventoriesPerTool = new Dictionary<ILaserToolKernel, HashSet<IMyTerminalBlock>>();
 
-            if (SubscribedLaserTools.Count == 0) yield return false;
+            if (subscribedLaserTools.Count == 0)
+            {
+                if (shouldUseDebug) WriteToLog(nameof(RefreshInventoryOwners), $"Early exit: no subscribed tools");
+                yield return false;
+            }
 
             List<IMyTerminalBlock> inventoryOwners = new List<IMyTerminalBlock>(80);
             Term.GetBlocksOfType(inventoryOwners, IsValidInventory);
@@ -229,7 +269,7 @@ namespace EemRdx.LaserWelders.EntityModules.GridModules
             }
 
             int updateTook = Ticker - opStart;
-            if (useDebug)
+            if (shouldUseDebug)
             {
                 WriteToLog(nameof(RefreshInventoryOwners), $"Tool/inventories pairs: {InventoriesPerTool.Count}");
 
